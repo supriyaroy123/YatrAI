@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YatrAI | Smart Traffic Intelligence for Indian Roads</title>
+    <meta name="description" content="YatrAI predicts traffic congestion, travel time, accident risk, and air quality for any route in India using machine learning and real-time data.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="/frontend/style.css">
+</head>
+<body>
+    <!-- Animated Background Grid -->
+    <div class="bg-grid"></div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="loading-spinner">
+            <div class="spinner-ring"></div>
+            <p class="loading-text">Analyzing route...</p>
+            <p class="loading-sub">Fetching live data from 4 APIs</p>
+        </div>
+    </div>
+
+    <!-- Error Toast -->
+    <div id="error-toast" class="error-toast hidden">
+        <span id="error-toast-icon">⚠️</span>
+        <span id="error-toast-msg"></span>
+        <button id="error-toast-close" onclick="hideToast()">&times;</button>
+    </div>
+
+    <!-- Header -->
+    <header id="app-header">
+        <div class="header-content">
+            <div class="logo-section">
+                <div class="logo-icon">
+                    <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+                        <circle cx="20" cy="20" r="18" stroke="url(#grad)" stroke-width="2.5" fill="none"/>
+                        <path d="M14 26L20 12L26 26" stroke="url(#grad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="20" cy="20" r="3" fill="url(#grad)"/>
+                        <defs>
+                            <linearGradient id="grad" x1="0" y1="0" x2="40" y2="40">
+                                <stop stop-color="#00d4ff"/>
+                                <stop offset="0.5" stop-color="#7b2ff7"/>
+                                <stop offset="1" stop-color="#ff2d95"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="logo-title">YatrAI</h1>
+                    <p class="logo-tagline">Smart Traffic Intelligence for Indian Roads</p>
+                </div>
+            </div>
+            <div class="header-badges">
+                <span class="badge">🇮🇳 Travel Advisory for India</span>
+                <button id="theme-toggle" class="theme-toggle-btn" title="Switch to Light Mode">☀️</button>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <!-- Input Section -->
+        <section id="input-section" class="glass-card input-card">
+            <h2 class="section-title">Plan Your Route</h2>
+            <div class="input-grid">
+                <div class="input-group">
+                    <label for="origin-input">Origin</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">📍</span>
+                        <input type="text" id="origin-input" placeholder="e.g., Gandhinagar" autocomplete="off">
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label for="destination-input">Destination</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">🎯</span>
+                        <input type="text" id="destination-input" placeholder="e.g., Ahmedabad" autocomplete="off">
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label for="departure-time">Departure Time</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">🕒</span>
+                        <input type="time" id="departure-time">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Vehicle Type Selector -->
+            <div class="vehicle-section">
+                <label>Vehicle Type</label>
+                <div class="vehicle-selector" id="vehicle-selector">
+                    <button class="vehicle-btn" data-vehicle="Scooter" id="vehicle-scooter" title="Scooter">
+                        <span class="vehicle-icon">🛵</span>
+                        <span class="vehicle-label">Scooter</span>
+                    </button>
+                    <button class="vehicle-btn" data-vehicle="Motorcycle" id="vehicle-motorcycle" title="Motorcycle">
+                        <span class="vehicle-icon">🏍️</span>
+                        <span class="vehicle-label">Motorcycle</span>
+                    </button>
+                    <button class="vehicle-btn active" data-vehicle="Car" id="vehicle-car" title="Car">
+                        <span class="vehicle-icon">🚗</span>
+                        <span class="vehicle-label">Car</span>
+                    </button>
+                    <button class="vehicle-btn" data-vehicle="SUV" id="vehicle-suv" title="SUV">
+                        <span class="vehicle-icon">🚙</span>
+                        <span class="vehicle-label">SUV</span>
+                    </button>
+                    <button class="vehicle-btn" data-vehicle="Auto Rickshaw" id="vehicle-auto" title="Auto Rickshaw">
+                        <span class="vehicle-icon">🛺</span>
+                        <span class="vehicle-label">Auto Rickshaw</span>
+                    </button>
+                    <button class="vehicle-btn" data-vehicle="Bus" id="vehicle-bus" title="Bus">
+                        <span class="vehicle-icon">🚌</span>
+                        <span class="vehicle-label">Bus</span>
+                    </button>
+                    <button class="vehicle-btn" data-vehicle="Truck" id="vehicle-truck" title="Truck">
+                        <span class="vehicle-icon">🚛</span>
+                        <span class="vehicle-label">Truck</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Fuel Mode Selector -->
+            <div class="fuel-section">
+                <label>Fuel Mode</label>
+                <div class="fuel-mode-selector">
+                    <label class="radio-label">
+                        <input type="radio" name="fuel-mode" value="average" checked onclick="toggleFuelMode('average')">
+                        <span>Estimated Average Mileage</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="fuel-mode" value="custom" onclick="toggleFuelMode('custom')">
+                        <span>Custom Mileage</span>
+                    </label>
+                </div>
+                <div id="custom-mileage-group" class="custom-mileage-group hidden">
+                    <label for="custom-mileage-input">Mileage (km/L)</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">⛽</span>
+                        <input type="number" id="custom-mileage-input" placeholder="e.g., 22" min="1" max="150" step="0.1">
+                    </div>
+                </div>
+            </div>
+
+            <button id="predict-btn" class="predict-btn" onclick="handlePredict()">
+                <span class="btn-text">Check Route & Travel Time</span>
+                <span class="btn-arrow">→</span>
+            </button>
+        </section>
+
+        <!-- Map Section -->
+        <section id="map-section" class="glass-card map-card">
+            <h2 class="section-title">Route Map</h2>
+            <div id="map" class="map-container"></div>
+        </section>
+
+        <!-- Results Section -->
+        <section id="results-section" class="results-section hidden">
+            <h2 class="section-title results-title">Route Advisory</h2>
+            <div class="route-summary" id="route-summary"></div>
+
+            <div class="results-grid">
+                <!-- Congestion Card -->
+                <div class="result-card" id="congestion-card">
+                    <div class="card-icon-wrapper" id="congestion-icon-bg">
+                        <span class="card-icon">🚦</span>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-label">Traffic Status</p>
+                        <p class="card-value" id="congestion-level">—</p>
+                    </div>
+                </div>
+
+                <!-- ETA Card -->
+                <div class="result-card" id="eta-card">
+                    <div class="card-icon-wrapper eta-icon-bg">
+                        <span class="card-icon">⏱️</span>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-label">Estimated Travel Time</p>
+                        <p class="card-value" id="eta-value">—</p>
+                        <p class="card-sub" id="eta-detail"></p>
+                    </div>
+                </div>
+
+                <!-- Accident Risk Card -->
+                <div class="result-card" id="risk-card">
+                    <div class="card-icon-wrapper" id="risk-icon-bg">
+                        <span class="card-icon">⚠️</span>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-label">Road Safety Advisory</p>
+                        <p class="card-value" id="risk-level">—</p>
+                        <div class="risk-reasons" id="risk-reasons"></div>
+                    </div>
+                </div>
+
+                <!-- AQI Card -->
+                <div class="result-card" id="aqi-card">
+                    <div class="card-icon-wrapper" id="aqi-icon-bg">
+                        <span class="card-icon">🌬️</span>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-label">Air Quality Status</p>
+                        <p class="card-value" id="aqi-value">—</p>
+                        <p class="card-sub" id="aqi-category"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fuel Analytics Panel -->
+            <div class="glass-card fuel-analytics-panel hidden" id="fuel-analytics-card">
+                <div class="fuel-header">
+                    <span class="fuel-title-icon">⛽</span>
+                    <h3>Fuel Analytics & Cost Estimation</h3>
+                    <span id="fuel-mode-badge" class="badge">Estimated Average</span>
+                </div>
+                <div class="fuel-body">
+                    <div class="fuel-metrics-grid">
+                        <div class="fuel-metric-card">
+                            <span class="fuel-metric-icon">🛣️</span>
+                            <div class="fuel-metric-info">
+                                <p class="fuel-metric-label">Distance</p>
+                                <p class="fuel-metric-val" id="fuel-distance-val">—</p>
+                            </div>
+                        </div>
+                        <div class="fuel-metric-card">
+                            <span id="fuel-vehicle-icon" class="fuel-metric-icon">🚗</span>
+                            <div class="fuel-metric-info">
+                                <p class="fuel-metric-label">Vehicle Type</p>
+                                <p class="fuel-metric-val" id="fuel-vehicle-val">—</p>
+                            </div>
+                        </div>
+                        <div class="fuel-metric-card">
+                            <span class="fuel-metric-icon">📈</span>
+                            <div class="fuel-metric-info">
+                                <p class="fuel-metric-label">Mileage Used</p>
+                                <p class="fuel-metric-val" id="fuel-mileage-val">—</p>
+                            </div>
+                        </div>
+                        <div class="fuel-metric-card">
+                            <span class="fuel-metric-icon">⛽</span>
+                            <div class="fuel-metric-info">
+                                <p class="fuel-metric-label">Fuel Needed</p>
+                                <p class="fuel-metric-val" id="fuel-needed-val">—</p>
+                            </div>
+                        </div>
+                        <div class="fuel-metric-card highlight-cost">
+                            <span class="fuel-metric-icon">💰</span>
+                            <div class="fuel-metric-info">
+                                <p class="fuel-metric-label">Estimated Cost</p>
+                                <p class="fuel-metric-val" id="fuel-cost-val">—</p>
+                            </div>
+                        </div>
+                        <div class="fuel-metric-card" id="fuel-traffic-impact-card">
+                            <span class="fuel-metric-icon">🚦</span>
+                            <div class="fuel-metric-info">
+                                <p class="fuel-metric-label">Traffic Impact</p>
+                                <p class="fuel-metric-val" id="fuel-traffic-impact-val">—</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="fuel-insight-box">
+                        <p class="fuel-insight-label">✨ AI Fuel Insight</p>
+                        <p id="fuel-insight-text" class="fuel-insight-val-text">—</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Travel Assistant Panel -->
+            <div class="glass-card ai-assistant-panel" id="ai-assistant-card">
+                <div class="ai-header">
+                    <span class="ai-icon">✨</span>
+                    <h3>AI Travel Assistant</h3>
+                </div>
+                <div class="ai-body">
+                    <div class="ai-summary-box">
+                        <p class="ai-label">Natural-Language Summary</p>
+                        <p id="ai-summary-text" class="ai-value-text">—</p>
+                    </div>
+                    <div class="ai-details-grid">
+                        <div class="ai-detail-item">
+                            <span class="ai-detail-icon">🛣️</span>
+                            <div>
+                                <p class="ai-detail-label">Travel Recommendation</p>
+                                <p id="ai-travel-rec" class="ai-detail-val">—</p>
+                            </div>
+                        </div>
+                        <div class="ai-detail-item">
+                            <span class="ai-detail-icon">🛡️</span>
+                            <div>
+                                <p class="ai-detail-label">Safety Recommendation</p>
+                                <p id="ai-safety-rec" class="ai-detail-val">—</p>
+                            </div>
+                        </div>
+                        <div class="ai-detail-item" id="ai-weather-alert-wrapper">
+                            <span class="ai-detail-icon">⛈️</span>
+                            <div>
+                                <p class="ai-detail-label">Weather Alert</p>
+                                <p id="ai-weather-alert" class="ai-detail-val">—</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Route Advisory & Insights Section -->
+        <section id="explanation-section" class="glass-card hidden">
+            <h2 class="section-title">📋 Route Insights & Warnings</h2>
+            <p class="explanation-subtitle">Key highlights and travel advisory details for your journey</p>
+            <ul id="insights-list" class="insights-list"></ul>
+        </section>
+
+        <!-- Weather Section -->
+        <section id="weather-section" class="glass-card weather-card hidden">
+            <h2 class="section-title">🌤️ Current Weather at Destination</h2>
+            <div class="weather-grid" id="weather-grid"></div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer id="app-footer">
+        <div class="footer-content">
+            <p>© 2026 YatrAI · Real-time travel times and safety advisories for Indian routes</p>
+        </div>
+    </footer>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/frontend/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+
+# Databases & local logs
+predictions.db
+*.log
+
+# Environments / secrets
+.env
+
+# Large model files if you plan to retrain them, but for deployment you need these,
+# so keep models/ folder in git unless you load them from an external release/bucket.
+# For free deployments like Render/Hugging Face, keeping models/ in the repo (under 100MB total) is fine.
