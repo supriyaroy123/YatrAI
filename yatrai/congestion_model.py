@@ -15,10 +15,7 @@ import numpy as np
 import pandas as pd
 import joblib
 import lightgbm as lgb
-import optuna
-from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.metrics import classification_report, accuracy_score, f1_score
 
 from yatrai.config import (
     VANET_DATASET,
@@ -36,8 +33,6 @@ from yatrai.config import (
     LGBM_PARAM_SPACE,
 )
 
-# Suppress Optuna info logs during search
-optuna.logging.set_verbosity(optuna.logging.WARNING)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 
@@ -53,7 +48,15 @@ def train_congestion_model() -> dict:
     Raises:
         FileNotFoundError: If the VANET dataset CSV is missing.
     """
+    import optuna
+    from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
+    from sklearn.metrics import classification_report, accuracy_score, f1_score
+
+    # Suppress Optuna info logs during search
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+
     print("[Congestion] Loading dataset …")
+
     df = pd.read_csv(VANET_DATASET)
     print(f"  Rows: {len(df):,}  |  Columns: {df.shape[1]}")
 

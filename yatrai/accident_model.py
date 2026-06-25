@@ -13,10 +13,7 @@ import numpy as np
 import pandas as pd
 import joblib
 import lightgbm as lgb
-import optuna
-from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.metrics import classification_report, accuracy_score, f1_score
 
 from yatrai.config import (
     US_ACCIDENTS_DATASET,
@@ -36,7 +33,6 @@ from yatrai.config import (
     LGBM_PARAM_SPACE,
 )
 
-optuna.logging.set_verbosity(optuna.logging.WARNING)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 
@@ -57,6 +53,12 @@ def train_accident_model() -> dict:
     Returns:
         dict with {accuracy, f1_macro, best_trial, classification_report}.
     """
+    import optuna
+    from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
+    from sklearn.metrics import classification_report, accuracy_score, f1_score
+
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+
     print("[Accident] Loading dataset …")
     df = pd.read_csv(US_ACCIDENTS_DATASET)
     print(f"  Raw rows: {len(df):,}")
