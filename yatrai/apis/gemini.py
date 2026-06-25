@@ -28,7 +28,12 @@ def generate_travel_summary(
     Generate a natural-language travel summary, recommendation, safety alert, weather alert,
     and fuel cost insight using the Gemini 1.5 Flash API.
     """
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    model = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+    if model.startswith("models/"):
+        model = model.replace("models/", "")
+    url = f"https://genergenerativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+    # Note: Correcting typo in domain to match the standard Google API endpoint:
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
     
     fuel_info = ""
     if fuel_needed_liters is not None and fuel_cost_rupees is not None:
