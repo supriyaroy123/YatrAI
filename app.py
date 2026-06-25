@@ -74,12 +74,15 @@ def load_models():
         print("[OK] Congestion model loaded")
         
         # Initialize SHAP explainer
-        try:
-            from yatrai.shap_explainer import ShapExplainer
-            shap_explainer = ShapExplainer(congestion_model, CONGESTION_ALL_FEATURES)
-            print("[OK] SHAP explainer initialized")
-        except Exception as e:
-            print(f"[!] SHAP explainer failed: {e}")
+        if os.environ.get("DISABLE_SHAP", "false").lower() == "true":
+            print("[INFO] SHAP explainer is disabled via environment variable")
+        else:
+            try:
+                from yatrai.shap_explainer import ShapExplainer
+                shap_explainer = ShapExplainer(congestion_model, CONGESTION_ALL_FEATURES)
+                print("[OK] SHAP explainer initialized")
+            except Exception as e:
+                print(f"[!] SHAP explainer failed: {e}")
     else:
         print("[!!] Congestion model not found -- run train.py first")
     
