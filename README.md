@@ -26,10 +26,10 @@ User sees: Traffic level, ETA, Accident risk, AQI
 
 | API        | Provides                                          | Cost              |
 | ---------- | ------------------------------------------------- | ----------------- |
-| Nominatim  | Place name → GPS coordinates                     | Free              |
+| Nominatim  | Place name → GPS coordinates                      | Free              |
 | OSRM       | Road distance + base travel time + route geometry | Free              |
 | Open-Meteo | Live temperature, rain, visibility                | Free              |
-| WAQI       | Live Air Quality Index                            | Free (demo token) |
+| WAQI       | Live Air Quality Index                            | Free              |
 
 ## 🔧 Feature Bridging (Core Innovation)
 

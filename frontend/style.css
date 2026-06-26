@@ -1164,4 +1164,186 @@ main {
     font-weight: 500;
 }
 
+/* ── Sustainability Analytics Panel ────────────────────────────────── */
+.sustainability-panel {
+    grid-column: 1 / -1;
+    margin-top: 24px;
+    padding: 24px;
+    border-radius: var(--radius-lg);
+    background: linear-gradient(135deg, rgba(0, 230, 118, 0.05), rgba(0, 150, 136, 0.03));
+    border: 1px solid rgba(0, 230, 118, 0.12);
+    text-align: left;
+    transition: all var(--transition);
+}
+
+.sustainability-panel:hover {
+    border-color: rgba(0, 230, 118, 0.25);
+    box-shadow: 0 8px 32px rgba(0, 230, 118, 0.06);
+}
+
+.sustainability-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border-glass);
+    padding-bottom: 12px;
+}
+
+.sustainability-header h3 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-right: auto;
+    margin-bottom: 0;
+}
+
+.sustainability-title-icon {
+    font-size: 1.5rem;
+}
+
+.sustainability-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.sustainability-metric-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-glass);
+    border-radius: var(--radius-md);
+    transition: all var(--transition);
+}
+
+.sustainability-metric-card:hover {
+    background: var(--bg-card-hover);
+    border-color: rgba(255, 255, 255, 0.15);
+    transform: translateY(-2px);
+}
+
+.sustainability-metric-card.highlight-co2 {
+    background: linear-gradient(135deg, rgba(0, 230, 118, 0.1), rgba(0, 150, 136, 0.05));
+    border-color: rgba(0, 230, 118, 0.2);
+}
+
+.sustainability-metric-card.highlight-co2:hover {
+    border-color: rgba(0, 230, 118, 0.4);
+}
+
+.sustainability-metric-card.highlight-tree {
+    background: linear-gradient(135deg, rgba(76, 175, 80, 0.12), rgba(0, 150, 136, 0.06));
+    border-color: rgba(76, 175, 80, 0.25);
+}
+
+.sustainability-metric-card.highlight-tree:hover {
+    border-color: rgba(76, 175, 80, 0.45);
+}
+
+.tree-interpretation-box {
+    border-left-color: #4caf50 !important;
+}
+
+.sustainability-metric-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
+.sustainability-metric-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.sustainability-metric-label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+.sustainability-metric-val {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.sustainability-insight-box {
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-glass);
+    border-radius: var(--radius-md);
+    border-left: 4px solid var(--color-green);
+    margin-bottom: 16px;
+}
+
+.sustainability-insight-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.sustainability-insight-val-text {
+    font-size: 0.95rem;
+    line-height: 1.5;
+    color: var(--text-primary);
+}
+
+.sustainability-ai-box {
+    padding: 16px;
+    background: var(--gradient-accent-soft);
+    border: 1px solid var(--border-glass);
+    border-radius: var(--radius-md);
+    border-left: 4px solid var(--accent-cyan);
+}
+
+.sustainability-ai-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.sustainability-ai-val-text {
+    font-size: 0.95rem;
+    line-height: 1.5;
+    color: var(--text-primary);
+    font-style: italic;
+}
+
+/* Impact category badge styling */
+.badge-low-impact {
+    background: rgba(0, 230, 118, 0.15) !important;
+    border-color: rgba(0, 230, 118, 0.3) !important;
+    color: var(--color-green) !important;
+}
+
+.badge-moderate-impact {
+    background: rgba(255, 234, 0, 0.15) !important;
+    border-color: rgba(255, 234, 0, 0.3) !important;
+    color: var(--color-yellow) !important;
+}
+
+.badge-high-impact {
+    background: rgba(255, 145, 0, 0.15) !important;
+    border-color: rgba(255, 145, 0, 0.3) !important;
+    color: var(--color-orange) !important;
+}
+
+.badge-veryhigh-impact {
+    background: rgba(255, 23, 68, 0.15) !important;
+    border-color: rgba(255, 23, 68, 0.3) !important;
+    color: var(--color-red) !important;
+}
+
 

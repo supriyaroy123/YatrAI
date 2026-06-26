@@ -32,6 +32,7 @@ from yatrai.feature_engineering import build_congestion_features, build_accident
 from yatrai.travel_time import estimate_travel_time
 from yatrai.drift_detection import log_prediction, get_prediction_stats
 from yatrai.fuel_calculator import calculate_fuel
+from yatrai.sustainability import calculate_sustainability
 
 
 # ─── App Setup ─────────────────────────────────────────────────────
@@ -74,15 +75,12 @@ def load_models():
         print("[OK] Congestion model loaded")
         
         # Initialize SHAP explainer
-        if os.environ.get("DISABLE_SHAP", "false").lower() == "true":
-            print("[INFO] SHAP explainer is disabled via environment variable")
-        else:
-            try:
-                from yatrai.shap_explainer import ShapExplainer
-                shap_explainer = ShapExplainer(congestion_model, CONGESTION_ALL_FEATURES)
-                print("[OK] SHAP explainer initialized")
-            except Exception as e:
-                print(f"[!] SHAP explainer failed: {e}")
+        try:
+            from yatrai.shap_explainer import ShapExplainer
+            shap_explainer = ShapExplainer(congestion_model, CONGESTION_ALL_FEATURES)
+            print("[OK] SHAP explainer initialized")
+        except Exception as e:
+            print(f"[!] SHAP explainer failed: {e}")
     else:
         print("[!!] Congestion model not found -- run train.py first")
     
@@ -237,7 +235,7 @@ async def predict(request: PredictRequest):
     # Step 2-4: Get route, weather, and AQI concurrently in separate threads
     route_task = loop.run_in_executor(None, get_route, origin_coords, dest_coords)
     weather_task = loop.run_in_executor(None, get_weather, dest_coords[0], dest_coords[1])
-    aqi_task = loop.run_in_executor(None, get_aqi, dest_coords[0], dest_coords[1])
+    aqi_task = loop.run_in_executor(None, get_aqi, dest_coords[0], dest_coords[1], dest_geo["display_name"])
     
     route_data, weather_data, aqi_data = await asyncio.gather(route_task, weather_task, aqi_task)
 
@@ -357,8 +355,20 @@ async def predict(request: PredictRequest):
         vehicle_type=request.vehicle_type,
         congestion_level=congestion_result["level"],
         rain_mm=weather_data.get("rain_mm", 0.0),
+        visibility_km=weather_data.get("visibility_km", 10.0),
         fuel_mode=request.fuel_mode,
         custom_mileage=request.custom_mileage,
+    )
+
+    # Step 7.3: Sustainability calculation
+    sustainability_result = calculate_sustainability(
+        fuel_needed_liters=fuel_result["fuel_needed_liters"],
+        distance_km=route_data["distance_km"],
+        vehicle_type=request.vehicle_type,
+        congestion_level=congestion_result["level"],
+        rain_mm=weather_data.get("rain_mm", 0.0),
+        visibility_km=weather_data.get("visibility_km", 10.0),
+        mileage_used=fuel_result["mileage_used"],
     )
 
     # Step 7.5: Generate AI Travel Summary using Gemini
@@ -381,8 +391,12 @@ async def predict(request: PredictRequest):
         fuel_result["fuel_needed_liters"],
         fuel_result["fuel_cost_rupees"],
         fuel_result["traffic_impact_percent"],
+        sustainability_result["co2_emission_kg"],
     )
     
+    # Inject AI sustainability insight
+    sustainability_result["sustainability_insight"] = ai_summary.get("sustainability_insight", "")
+
     # Step 8: Build response
     response = {
         "origin": {
@@ -410,6 +424,7 @@ async def predict(request: PredictRequest):
         "explanation": explanation,
         "ai_summary": ai_summary,
         "fuel_estimation": fuel_result,
+        "sustainability_analytics": sustainability_result,
         "model_version": "v1.0",
         "timestamp": now.isoformat(),
     }
@@ -443,7 +458,7 @@ async def get_city_aqi(city: str):
     geo = geocode(city)
     if not geo:
         raise HTTPException(status_code=404, detail=f"City not found: {city}")
-    aqi_data = get_aqi(geo["lat"], geo["lon"])
+    aqi_data = get_aqi(geo["lat"], geo["lon"], geo["display_name"])
     return {"city": city, **aqi_data}
 
 
@@ -461,6 +476,4 @@ if FRONTEND_DIR.exists():
 # ─── Run ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
-    import os
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

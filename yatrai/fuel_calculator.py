@@ -10,6 +10,7 @@ def calculate_fuel(
     vehicle_type: str,
     congestion_level: str,
     rain_mm: float = 0.0,
+    visibility_km: float = 10.0,
     fuel_mode: str = "average",
     custom_mileage: float = None,
 ) -> dict:
@@ -55,15 +56,19 @@ def calculate_fuel(
         traffic_factor = 1.10  # Moderate default fallback
 
     # 3. Weather Fuel Factor
-    # Normal Weather = 1.00, Light Rain = 1.05, Moderate Rain = 1.08, Heavy Rain = 1.12
+    # Normal Weather = 1.00, Light Rain = 1.03, Moderate Rain = 1.06, Heavy Rain = 1.10
+    # Visibility < 2 km: Additional * 1.05
     if rain_mm < 1.0:
         weather_factor = 1.00
     elif rain_mm < 5.0:
-        weather_factor = 1.05
+        weather_factor = 1.03
     elif rain_mm < 15.0:
-        weather_factor = 1.08
+        weather_factor = 1.06
     else:
-        weather_factor = 1.12
+        weather_factor = 1.10
+
+    if visibility_km < 2.0:
+        weather_factor *= 1.05
 
     # 4. Calculation
     base_fuel = distance_km / mileage_used if mileage_used > 0 else 0
