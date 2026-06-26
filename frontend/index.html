@@ -1,16 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YatrAI | Smart Traffic Intelligence for Indian Roads</title>
-    <meta name="description" content="YatrAI predicts traffic congestion, travel time, accident risk, and air quality for any route in India using machine learning and real-time data.">
+    <meta name="description"
+        content="YatrAI predicts traffic congestion, travel time, accident risk, and air quality for any route in India using machine learning and real-time data.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="/frontend/style.css">
 </head>
+
 <body>
     <!-- Animated Background Grid -->
     <div class="bg-grid"></div>
@@ -37,14 +40,15 @@
             <div class="logo-section">
                 <div class="logo-icon">
                     <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-                        <circle cx="20" cy="20" r="18" stroke="url(#grad)" stroke-width="2.5" fill="none"/>
-                        <path d="M14 26L20 12L26 26" stroke="url(#grad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                        <circle cx="20" cy="20" r="3" fill="url(#grad)"/>
+                        <circle cx="20" cy="20" r="18" stroke="url(#grad)" stroke-width="2.5" fill="none" />
+                        <path d="M14 26L20 12L26 26" stroke="url(#grad)" stroke-width="2.5" stroke-linecap="round"
+                            stroke-linejoin="round" />
+                        <circle cx="20" cy="20" r="3" fill="url(#grad)" />
                         <defs>
                             <linearGradient id="grad" x1="0" y1="0" x2="40" y2="40">
-                                <stop stop-color="#00d4ff"/>
-                                <stop offset="0.5" stop-color="#7b2ff7"/>
-                                <stop offset="1" stop-color="#ff2d95"/>
+                                <stop stop-color="#00d4ff" />
+                                <stop offset="0.5" stop-color="#7b2ff7" />
+                                <stop offset="1" stop-color="#ff2d95" />
                             </linearGradient>
                         </defs>
                     </svg>
@@ -129,7 +133,8 @@
                 <label>Fuel Mode</label>
                 <div class="fuel-mode-selector">
                     <label class="radio-label">
-                        <input type="radio" name="fuel-mode" value="average" checked onclick="toggleFuelMode('average')">
+                        <input type="radio" name="fuel-mode" value="average" checked
+                            onclick="toggleFuelMode('average')">
                         <span>Estimated Average Mileage</span>
                     </label>
                     <label class="radio-label">
@@ -141,7 +146,8 @@
                     <label for="custom-mileage-input">Mileage (km/L)</label>
                     <div class="input-wrapper">
                         <span class="input-icon">⛽</span>
-                        <input type="number" id="custom-mileage-input" placeholder="e.g., 22" min="1" max="150" step="0.1">
+                        <input type="number" id="custom-mileage-input" placeholder="e.g., 22" min="1" max="150"
+                            step="0.1">
                     </div>
                 </div>
             </div>
@@ -264,10 +270,66 @@
                             </div>
                         </div>
                     </div>
-                    
+
                     <div class="fuel-insight-box">
                         <p class="fuel-insight-label">✨ AI Fuel Insight</p>
                         <p id="fuel-insight-text" class="fuel-insight-val-text">—</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sustainability Analytics Card -->
+            <div class="glass-card sustainability-panel hidden" id="sustainability-card">
+                <div class="sustainability-header">
+                    <span class="sustainability-title-icon">🌱</span>
+                    <h3>Sustainability Analytics</h3>
+                    <span id="sustainability-impact-badge" class="badge">Low Impact</span>
+                </div>
+                <div class="sustainability-body">
+                    <div class="sustainability-metrics-grid">
+                        <div class="sustainability-metric-card highlight-co2">
+                            <span class="sustainability-metric-icon">💨</span>
+                            <div class="sustainability-metric-info">
+                                <p class="sustainability-metric-label">CO₂ Emission</p>
+                                <p class="sustainability-metric-val" id="sustain-co2-val">—</p>
+                            </div>
+                        </div>
+                        <div class="sustainability-metric-card highlight-tree" id="sustain-tree-card">
+                            <span class="sustainability-metric-icon">🌳</span>
+                            <div class="sustainability-metric-info">
+                                <p class="sustainability-metric-label">Tree Offset Equivalent</p>
+                                <p class="sustainability-metric-val" id="sustain-tree-val">—</p>
+                            </div>
+                        </div>
+                        <div class="sustainability-metric-card" id="sustain-traffic-impact-card">
+                            <span class="sustainability-metric-icon">🚦</span>
+                            <div class="sustainability-metric-info">
+                                <p class="sustainability-metric-label">Traffic Impact</p>
+                                <p class="sustainability-metric-val" id="sustain-traffic-val">—</p>
+                            </div>
+                        </div>
+                        <div class="sustainability-metric-card" id="sustain-weather-impact-card">
+                            <span class="sustainability-metric-icon">🌦️</span>
+                            <div class="sustainability-metric-info">
+                                <p class="sustainability-metric-label">Weather Impact</p>
+                                <p class="sustainability-metric-val" id="sustain-weather-val">—</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="sustainability-insight-box tree-interpretation-box">
+                        <p class="sustainability-insight-label">🌳 Tree Offset Interpretation</p>
+                        <p id="sustain-tree-interpretation-text" class="sustainability-insight-val-text">—</p>
+                    </div>
+
+                    <div class="sustainability-insight-box">
+                        <p class="sustainability-insight-label">🌿 Eco Recommendation</p>
+                        <p id="sustain-recommendation-text" class="sustainability-insight-val-text">—</p>
+                    </div>
+
+                    <div class="sustainability-ai-box">
+                        <p class="sustainability-ai-label">✨ AI Sustainability Insight</p>
+                        <p id="sustain-ai-insight-text" class="sustainability-ai-val-text">—</p>
                     </div>
                 </div>
             </div>
@@ -334,4 +396,5 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="/frontend/script.js"></script>
 </body>
+
 </html>

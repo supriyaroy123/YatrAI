@@ -406,6 +406,83 @@ function updateResults(data) {
         fuelCard.classList.add('hidden');
     }
 
+    // Sustainability Analytics Card
+    const sustainabilityCard = document.getElementById('sustainability-card');
+    if (data.sustainability_analytics && sustainabilityCard) {
+        sustainabilityCard.classList.remove('hidden');
+
+        document.getElementById('sustain-co2-val').textContent = `${data.sustainability_analytics.co2_emission_kg} kg`;
+        document.getElementById('sustain-tree-val').textContent = `${data.sustainability_analytics.tree_days} Tree-Days`;
+        document.getElementById('sustain-tree-interpretation-text').textContent = data.sustainability_analytics.tree_offset_interpretation || '—';
+
+        // Traffic impact %
+        const trafficImpactVal = document.getElementById('sustain-traffic-val');
+        const trafficImpactCard = document.getElementById('sustain-traffic-impact-card');
+        const trafficImpactPct = data.sustainability_analytics.traffic_impact_percent;
+        trafficImpactVal.textContent = `+${trafficImpactPct}%`;
+        
+        if (trafficImpactPct === 0) {
+            trafficImpactVal.textContent = '0% (None)';
+            trafficImpactVal.style.color = 'var(--color-green)';
+            trafficImpactCard.style.borderColor = 'var(--border-glass)';
+        } else if (trafficImpactPct <= 10) {
+            trafficImpactVal.style.color = 'var(--color-yellow)';
+            trafficImpactCard.style.borderColor = 'rgba(255, 234, 0, 0.2)';
+        } else if (trafficImpactPct <= 25) {
+            trafficImpactVal.style.color = 'var(--color-orange)';
+            trafficImpactCard.style.borderColor = 'rgba(255, 145, 0, 0.2)';
+        } else {
+            trafficImpactVal.style.color = 'var(--color-red)';
+            trafficImpactCard.style.borderColor = 'rgba(255, 23, 68, 0.2)';
+        }
+
+        // Weather impact %
+        const weatherImpactVal = document.getElementById('sustain-weather-val');
+        const weatherImpactCard = document.getElementById('sustain-weather-impact-card');
+        const weatherImpactPct = data.sustainability_analytics.weather_impact_percent;
+        weatherImpactVal.textContent = `+${weatherImpactPct}%`;
+        
+        if (weatherImpactPct === 0) {
+            weatherImpactVal.textContent = '0% (None)';
+            weatherImpactVal.style.color = 'var(--color-green)';
+            weatherImpactCard.style.borderColor = 'var(--border-glass)';
+        } else if (weatherImpactPct <= 5) {
+            weatherImpactVal.style.color = 'var(--color-yellow)';
+            weatherImpactCard.style.borderColor = 'rgba(255, 234, 0, 0.2)';
+        } else if (weatherImpactPct <= 10) {
+            weatherImpactVal.style.color = 'var(--color-orange)';
+            weatherImpactCard.style.borderColor = 'rgba(255, 145, 0, 0.2)';
+        } else {
+            weatherImpactVal.style.color = 'var(--color-red)';
+            weatherImpactCard.style.borderColor = 'rgba(255, 23, 68, 0.2)';
+        }
+
+        // Impact level badge
+        const impactBadge = document.getElementById('sustainability-impact-badge');
+        const impactLevel = data.sustainability_analytics.environmental_impact_level;
+        impactBadge.textContent = impactLevel;
+        
+        // Remove existing badge classes
+        impactBadge.className = 'badge';
+        if (impactLevel === 'Low Impact') {
+            impactBadge.classList.add('badge-low-impact');
+        } else if (impactLevel === 'Moderate Impact') {
+            impactBadge.classList.add('badge-moderate-impact');
+        } else if (impactLevel === 'High Impact') {
+            impactBadge.classList.add('badge-high-impact');
+        } else {
+            impactBadge.classList.add('badge-veryhigh-impact');
+        }
+
+        // Eco recommendation text
+        document.getElementById('sustain-recommendation-text').textContent = data.sustainability_analytics.eco_recommendation || 'No negative conditions detected. Driving efficiently helps preserve resources!';
+
+        // AI Sustainability insight text
+        document.getElementById('sustain-ai-insight-text').textContent = data.sustainability_analytics.sustainability_insight || 'No dynamic AI insight available. Aim to drive outside peak congestion hours to minimize carbon footprint.';
+    } else if (sustainabilityCard) {
+        sustainabilityCard.classList.add('hidden');
+    }
+
     // AI Travel Assistant
     if (data.ai_summary) {
         document.getElementById('ai-summary-text').textContent = data.ai_summary.summary || '—';
@@ -425,7 +502,7 @@ function updateResults(data) {
     }
 
     // Stagger card reveal animations
-    const cards = document.querySelectorAll('.result-card, .ai-assistant-panel, .fuel-analytics-panel');
+    const cards = document.querySelectorAll('.result-card, .ai-assistant-panel, .fuel-analytics-panel, .sustainability-panel');
     cards.forEach((card, i) => {
         card.classList.remove('visible');
         setTimeout(() => {
