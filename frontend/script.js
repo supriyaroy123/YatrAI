@@ -664,7 +664,12 @@ function updateMap(data) {
 
     // Fit map bounds
     const bounds = L.latLngBounds(coords);
-    map.fitBounds(bounds, { padding: [50, 50] });
+    if (map) {
+        map.invalidateSize();
+        setTimeout(() => {
+            map.fitBounds(bounds, { padding: [40, 40] });
+        }, 150);
+    }
 }
 
 // ── Update Route Insights ────────────────────────────────────────
