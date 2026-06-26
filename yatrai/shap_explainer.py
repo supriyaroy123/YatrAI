@@ -3,9 +3,7 @@ SHAP TreeExplainer wrapper for LightGBM models.
 Provides per-prediction feature importance explanations.
 """
 
-import shap
 import numpy as np
-
 
 class ShapExplainer:
     """Wraps shap.TreeExplainer to produce top-N feature impact rankings."""
@@ -16,6 +14,7 @@ class ShapExplainer:
             model: A trained LightGBM model (or any tree-based model).
             feature_names: Ordered list of feature column names.
         """
+        import shap
         self.explainer = shap.TreeExplainer(model)
         self.feature_names = feature_names
 

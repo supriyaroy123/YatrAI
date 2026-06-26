@@ -476,4 +476,7 @@ if FRONTEND_DIR.exists():
 # ─── Run ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    # Disable reload mode in production (e.g. on Render) to save memory
+    is_production = os.environ.get("RENDER", "false").lower() == "true" or "PORT" in os.environ
+    reload_mode = not is_production
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=reload_mode)
