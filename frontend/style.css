@@ -1,8 +1,8 @@
-/* ═══════════════════════════════════════════════════════════════
+/*
    YatrAI — Premium Mobile-First Dark Theme
-   ═══════════════════════════════════════════════════════════════ */
+*/
 
-/* ── Design Tokens ────────────────────────────────────────────── */
+/*  Design Tokens  */
 :root {
     --bg-canvas: #070913;
     --bg-primary: #0b0e1a;
@@ -61,7 +61,7 @@
     --color-red: #dc2626;
 }
 
-/* ── Reset & Base ─────────────────────────────────────────────── */
+/*  Reset & Base  */
 *, *::before, *::after {
     box-sizing: border-box;
     margin: 0;
@@ -81,7 +81,7 @@ body {
     overflow-x: hidden;
 }
 
-/* ── Background Grid ─────────────────────────────────────────── */
+/*  Background Grid  */
 .bg-grid {
     position: fixed;
     top: 0; left: 0;
@@ -100,7 +100,7 @@ body {
         linear-gradient(90deg, rgba(0, 0, 0, 0.015) 1px, transparent 1px);
 }
 
-/* ── App Device Shell Container ───────────────────────────────── */
+/*  App Device Shell Container  */
 .app-container {
     width: 100%;
     max-width: 440px;
@@ -124,7 +124,7 @@ body {
     }
 }
 
-/* ── Header ───────────────────────────────────────────────────── */
+/*  Header  */
 #app-header {
     background: var(--bg-primary);
     border-bottom: 1px solid var(--border-glass);
@@ -216,7 +216,7 @@ body {
     transform: scale(1.05);
 }
 
-/* ── App Screen Content Area ───────────────────────────────────── */
+/*  App Screen Content Area  */
 .app-screen {
     flex: 1;
     display: flex;
@@ -238,7 +238,7 @@ body {
     letter-spacing: -0.5px;
 }
 
-/* ── Form Inputs ──────────────────────────────────────────────── */
+/*  Form Inputs  */
 .input-group {
     display: flex;
     flex-direction: column;
@@ -286,7 +286,7 @@ body {
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
 }
 
-/* ── Vehicle selector 2-column grid ───────────────────────────── */
+/*  Vehicle selector 2-column grid  */
 .vehicle-section {
     display: flex;
     flex-direction: column;
@@ -346,7 +346,7 @@ body {
     grid-column: span 2;
 }
 
-/* ── Segmented Control tabs for fuel mode ────────────────────── */
+/*  Segmented Control tabs for fuel mode  */
 .fuel-section {
     display: flex;
     flex-direction: column;
@@ -411,7 +411,7 @@ body {
     color: var(--text-secondary);
 }
 
-/* ── Predict button ───────────────────────────────────────────── */
+/*  Predict button  */
 .predict-btn {
     background: var(--accent-blue);
     border: none;
@@ -445,7 +445,7 @@ body {
     transform: translateX(4px);
 }
 
-/* ── Results Navigation tabs ──────────────────────────────────── */
+/*  Results Navigation tabs  */
 .tabs-navigation {
     display: flex;
     border-bottom: 1px solid var(--border-glass);
@@ -485,7 +485,7 @@ body {
     border-radius: 4px;
 }
 
-/* ── Tab Panels Content Viewport ──────────────────────────────── */
+/*  Tab Panels Content Viewport  */
 .tab-panels-wrapper {
     padding: 16px;
     display: flex;
@@ -503,7 +503,7 @@ body {
     display: none !important;
 }
 
-/* ── Map ──────────────────────────────────────────────────────── */
+/*  Map  */
 .map-card-wrapper {
     background: var(--bg-card);
     border: 1px solid var(--border-glass);
@@ -536,14 +536,14 @@ body {
     border-color: var(--border-glass) !important;
 }
 
-/* ── Side-by-side row ─────────────────────────────────────────── */
+/*  Side-by-side row  */
 .side-by-side-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 12px;
 }
 
-/* ── Compact card design ──────────────────────────────────────── */
+/*  Compact card design  */
 .compact-card {
     background: var(--bg-card);
     border: 1px solid var(--border-glass);
@@ -611,7 +611,7 @@ body {
     line-height: 1.5;
 }
 
-/* ── Large Detail Card ────────────────────────────────────────── */
+/*  Large Detail Card  */
 .detail-card {
     background: var(--bg-card);
     border: 1px solid var(--border-glass);
@@ -661,7 +661,7 @@ body {
     line-height: 1.4;
 }
 
-/* ── Weather Section ──────────────────────────────────────────── */
+/*  Weather Section  */
 .weather-section-wrapper {
     margin-top: 8px;
 }
@@ -705,7 +705,7 @@ body {
     color: var(--text-muted);
 }
 
-/* ── Cost Hero Card ───────────────────────────────────────────── */
+/*  Cost Hero Card  */
 .cost-hero-card {
     background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(16, 185, 129, 0.03));
     border: 1px solid rgba(16, 185, 129, 0.18);
@@ -746,7 +746,7 @@ body {
     color: var(--accent-green);
 }
 
-/* ── 2x2 Journey Metrics Grid ─────────────────────────────────── */
+/*  2x2 Journey Metrics Grid  */
 .journey-grid-metrics {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -773,7 +773,7 @@ body {
     font-weight: 800;
 }
 
-/* ── Recommendations Container Card ───────────────────────────── */
+/*  Recommendations Container Card  */
 .recommendations-container-card {
     background: var(--bg-card);
     border: 1px solid var(--border-glass);
@@ -830,7 +830,7 @@ body {
     color: var(--color-orange) !important;
 }
 
-/* ── Route insights list details ──────────────────────────────── */
+/*  Route insights list details  */
 .insights-list {
     list-style: none;
     display: flex;
@@ -860,7 +860,7 @@ body {
     color: var(--text-primary);
 }
 
-/* ── Dynamic Severity colors ──────────────────────────────────── */
+/*  Dynamic Severity colors  */
 .severity-freeflow { color: var(--color-green); }
 .severity-moderate { color: var(--color-yellow); }
 .severity-heavy { color: var(--color-orange); }
@@ -877,7 +877,7 @@ body {
 .border-medium { border-left: 3px solid var(--color-orange) !important; }
 .border-high { border-left: 3px solid var(--color-red) !important; }
 
-/* ── Loading Overlay ──────────────────────────────────────────── */
+/*  Loading Overlay  */
 .loading-overlay {
     position: absolute;
     inset: 0;
@@ -928,7 +928,7 @@ body {
     color: var(--text-muted);
 }
 
-/* ── Error Toast ──────────────────────────────────────────────── */
+/*  Error Toast  */
 .error-toast {
     position: fixed;
     top: 16px;
@@ -964,7 +964,7 @@ body {
     to { transform: translate(-50%, 0); opacity: 1; }
 }
 
-/* ── Footer ───────────────────────────────────────────────────── */
+/*  Footer  */
 #app-footer {
     border-top: 1px solid var(--border-glass);
     background: var(--bg-primary);
@@ -977,12 +977,12 @@ body {
     color: var(--text-muted);
 }
 
-/* ── Utility Classes ──────────────────────────────────────────── */
+/*  Utility Classes  */
 .hidden {
     display: none !important;
 }
 
-/* ── Animations ───────────────────────────────────────────────── */
+/*  Animations  */
 @keyframes fadeIn {
     from { opacity: 0; }
     to { opacity: 1; }

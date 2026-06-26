@@ -35,7 +35,7 @@ from yatrai.fuel_calculator import calculate_fuel
 from yatrai.sustainability import calculate_sustainability
 
 
-# ─── App Setup ─────────────────────────────────────────────────────
+# App Setup 
 app = FastAPI(
     title="YatrAI",
     description="End-to-end Traffic Intelligence for Indian Roads",
@@ -49,7 +49,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ─── Global Model State ───────────────────────────────────────────
+#  Global Model State 
 congestion_model = None
 congestion_scaler = None
 congestion_encoder = None
@@ -127,7 +127,7 @@ def _init_db():
     conn.close()
 
 
-# ─── Request/Response Models ──────────────────────────────────────
+# Request/Response Models 
 class PredictRequest(BaseModel):
     origin: str
     destination: str
@@ -143,7 +143,7 @@ class AQIRequest(BaseModel):
     city: str
 
 
-# ─── Endpoints ────────────────────────────────────────────────────
+#  Endpoints 
 @app.get("/")
 async def serve_frontend():
     index_path = FRONTEND_DIR / "index.html"
@@ -468,12 +468,12 @@ async def prediction_stats():
     return get_prediction_stats()
 
 
-# ─── Serve Frontend Static Files ──────────────────────────────────
+#  Serve Frontend Static Files 
 if FRONTEND_DIR.exists():
     app.mount("/frontend", StaticFiles(directory=str(FRONTEND_DIR)), name="frontend")
 
 
-# ─── Run ──────────────────────────────────────────────────────────
+#  Run
 if __name__ == "__main__":
     import uvicorn
     # Disable reload mode in production (e.g. on Render) to save memory

@@ -665,10 +665,13 @@ function updateMap(data) {
     // Fit map bounds
     const bounds = L.latLngBounds(coords);
     if (map) {
-        map.invalidateSize();
         setTimeout(() => {
-            map.fitBounds(bounds, { padding: [40, 40] });
-        }, 150);
+            map.invalidateSize();
+            map.fitBounds(bounds, { 
+                padding: [40, 40],
+                maxZoom: 15
+            });
+        }, 250);
     }
 }
 
