@@ -17,7 +17,7 @@ const originInput = document.getElementById('origin-input');
 const destInput = document.getElementById('destination-input');
 const predictBtn = document.getElementById('predict-btn');
 const loadingOverlay = document.getElementById('loading-overlay');
-const resultsSection = document.getElementById('results-section');
+const resultsSection = document.getElementById('screen-results');
 const explanationSection = document.getElementById('explanation-section');
 const weatherSection = document.getElementById('weather-section');
 const errorToast = document.getElementById('error-toast');
@@ -31,6 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initKeyboardShortcuts();
     initDepartureTime();
     initAutoPredictOnChanges();
+    initResultsNavigation();
 });
 
 // ── Theme Toggle (Dark / Light) ──────────────────────────────────
@@ -63,6 +64,55 @@ function updateThemeIcon() {
     const isLight = document.documentElement.getAttribute('data-theme') === 'light';
     btn.innerHTML = isLight ? '🌙' : '☀️';
     btn.title = isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode';
+}
+
+function initResultsNavigation() {
+    const tabBtns = document.querySelectorAll('.tab-nav-btn');
+    const panels = document.querySelectorAll('.tab-panel-content');
+    const backBtn = document.getElementById('back-btn');
+    const headerLogo = document.getElementById('header-logo-icon');
+    const headerTagline = document.getElementById('header-tagline');
+    const screenForm = document.getElementById('screen-form');
+    const screenResults = document.getElementById('screen-results');
+
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetTab = btn.dataset.tab;
+            
+            tabBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            panels.forEach(panel => {
+                if (panel.id === `tab-${targetTab}`) {
+                    panel.classList.remove('hidden');
+                    panel.classList.add('active');
+                } else {
+                    panel.classList.add('hidden');
+                    panel.classList.remove('active');
+                }
+            });
+
+            // Refresh map size if the overview tab becomes active
+            if (targetTab === 'overview' && map) {
+                setTimeout(() => {
+                    map.invalidateSize();
+                }, 50);
+            }
+        });
+    });
+
+    if (backBtn) {
+        backBtn.addEventListener('click', () => {
+            if (screenResults) screenResults.classList.add('hidden');
+            if (screenForm) screenForm.classList.remove('hidden');
+            backBtn.classList.add('hidden');
+            if (headerLogo) headerLogo.classList.remove('hidden');
+            if (headerTagline) {
+                headerTagline.textContent = 'Smart traffic intelligence for Indian roads';
+            }
+            hasPredicted = false;
+        });
+    }
 }
 
 function getMapTileUrl() {
@@ -243,15 +293,52 @@ async function handlePredict() {
         lastPredictionData = data;
         hasPredicted = true;
 
+        // Toggle screen visibility
+        const screenForm = document.getElementById('screen-form');
+        const backBtn = document.getElementById('back-btn');
+        const headerLogo = document.getElementById('header-logo-icon');
+        const headerTagline = document.getElementById('header-tagline');
+
+        if (screenForm) screenForm.classList.add('hidden');
+        if (resultsSection) resultsSection.classList.remove('hidden');
+        if (backBtn) backBtn.classList.remove('hidden');
+        if (headerLogo) headerLogo.classList.add('hidden');
+        
+        if (headerTagline) {
+            headerTagline.textContent = `${data.origin.name} → ${data.destination.name} · ${data.route.distance_km} km · ${data.vehicle_type}`;
+        }
+
+        // Reset to Overview tab upon new prediction
+        const tabBtns = document.querySelectorAll('.tab-nav-btn');
+        const panels = document.querySelectorAll('.tab-panel-content');
+        tabBtns.forEach(btn => {
+            if (btn.dataset.tab === 'overview') btn.classList.add('active');
+            else btn.classList.remove('active');
+        });
+        panels.forEach(panel => {
+            if (panel.id === 'tab-overview') {
+                panel.classList.remove('hidden');
+                panel.classList.add('active');
+            } else {
+                panel.classList.add('hidden');
+                panel.classList.remove('active');
+            }
+        });
+
         updateResults(data);
         updateMap(data);
         updateExplanation(data);
         updateWeather(data.weather);
 
-        // Scroll to results
-        setTimeout(() => {
-            resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 300);
+        // Refresh Leaflet map layout since it was loaded hidden
+        if (map) {
+            setTimeout(() => {
+                map.invalidateSize();
+            }, 100);
+        }
+
+        // Scroll layout to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
 
     } catch (err) {
         showToast(err.message || 'Failed to get prediction. Please try again.');
@@ -266,10 +353,12 @@ function updateResults(data) {
 
     // Route summary
     const summary = document.getElementById('route-summary');
-    summary.innerHTML = `
-        <strong>${data.origin.name}</strong> → <strong>${data.destination.name}</strong>
-        &nbsp;·&nbsp; ${data.route.distance_km} km &nbsp;·&nbsp; ${data.vehicle_type}
-    `;
+    if (summary) {
+        summary.innerHTML = `
+            <strong>${data.origin.name}</strong> → <strong>${data.destination.name}</strong>
+            &nbsp;·&nbsp; ${data.route.distance_km} km &nbsp;·&nbsp; ${data.vehicle_type}
+        `;
+    }
 
     // Congestion card
     const congLevel = data.congestion.level;
@@ -287,7 +376,7 @@ function updateResults(data) {
     const congClass = getSeverityClass(congLevel);
     congValue.textContent = friendlyCongestion;
     congValue.className = 'card-value ' + congClass;
-    congCard.className = 'result-card border-' + congLevel.toLowerCase().replace('-', '');
+    congCard.className = 'compact-card border-' + congLevel.toLowerCase().replace('-', '');
 
     const congColor = getSeverityColor(congLevel);
     document.getElementById('congestion-icon-bg').style.background = `${congColor}22`;
@@ -297,8 +386,12 @@ function updateResults(data) {
     const etaDetail = document.getElementById('eta-detail');
     etaValue.textContent = formatTime(data.travel_time.eta_minutes);
     etaDetail.innerHTML = `
-        <div style="margin-bottom: 4px;"><strong>Departure:</strong> ${data.travel_time.departure_time} &nbsp;·&nbsp; <strong>Arrival:</strong> ${data.travel_time.arrival_time}</div>
-        <div style="opacity: 0.8;">Typical: ${formatTime(data.travel_time.base_minutes)} · Delay: +${formatTime(data.travel_time.delay_minutes)}</div>
+        <div class="eta-grid">
+            <div class="eta-grid-cell"><strong>Departure:</strong> ${data.travel_time.departure_time}</div>
+            <div class="eta-grid-cell"><strong>Arrival:</strong> ${data.travel_time.arrival_time}</div>
+            <div class="eta-grid-cell opacity-soft">Typical: ${formatTime(data.travel_time.base_minutes)}</div>
+            <div class="eta-grid-cell opacity-soft">Delay: +${formatTime(data.travel_time.delay_minutes)}</div>
+        </div>
     `;
 
     // Accident risk card
@@ -317,7 +410,7 @@ function updateResults(data) {
     const riskClass = getSeverityClass(riskLevel);
     riskValue.textContent = friendlyRisk;
     riskValue.className = 'card-value ' + riskClass;
-    riskCard.className = 'result-card border-' + riskLevel.toLowerCase();
+    riskCard.className = 'compact-card border-' + riskLevel.toLowerCase();
 
     const riskColor = getSeverityColor(riskLevel);
     document.getElementById('risk-icon-bg').style.background = `${riskColor}22`;
@@ -392,9 +485,11 @@ function updateResults(data) {
         };
         const vehTypeLower = data.fuel_estimation.vehicle_type.toLowerCase();
         const vehIcon = vehIcons[vehTypeLower] || '🚗';
-        document.getElementById('fuel-vehicle-icon').textContent = vehIcon;
+        const fuelVehIconEl = document.getElementById('fuel-vehicle-icon');
+        if (fuelVehIconEl) fuelVehIconEl.textContent = vehIcon;
 
-        document.getElementById('fuel-mode-badge').textContent = data.fuel_estimation.fuel_mode;
+        const fuelModeBadgeEl = document.getElementById('fuel-mode-badge');
+        if (fuelModeBadgeEl) fuelModeBadgeEl.textContent = data.fuel_estimation.fuel_mode;
 
         const fuelInsightText = document.getElementById('fuel-insight-text');
         if (data.ai_summary && data.ai_summary.fuel_insight) {
@@ -420,6 +515,9 @@ function updateResults(data) {
         const trafficImpactCard = document.getElementById('sustain-traffic-impact-card');
         const trafficImpactPct = data.sustainability_analytics.traffic_impact_percent;
         trafficImpactVal.textContent = `+${trafficImpactPct}%`;
+        if (trafficImpactCard) {
+            trafficImpactCard.classList.remove('hidden');
+        }
         
         if (trafficImpactPct === 0) {
             trafficImpactVal.textContent = '0% (None)';
@@ -463,7 +561,7 @@ function updateResults(data) {
         impactBadge.textContent = impactLevel;
         
         // Remove existing badge classes
-        impactBadge.className = 'badge';
+        impactBadge.className = 'cost-hero-badge';
         if (impactLevel === 'Low Impact') {
             impactBadge.classList.add('badge-low-impact');
         } else if (impactLevel === 'Moderate Impact') {
@@ -502,11 +600,11 @@ function updateResults(data) {
     }
 
     // Stagger card reveal animations
-    const cards = document.querySelectorAll('.result-card, .ai-assistant-panel, .fuel-analytics-panel, .sustainability-panel');
+    const cards = document.querySelectorAll('.compact-card, .detail-card, .cost-hero-card, .recommendations-container-card');
     cards.forEach((card, i) => {
         card.classList.remove('visible');
         setTimeout(() => {
-            card.style.transition = `opacity 0.5s ease ${i * 0.12}s, transform 0.5s ease ${i * 0.12}s`;
+            card.style.transition = `opacity 0.4s ease ${i * 0.08}s, transform 0.4s ease ${i * 0.08}s`;
             card.classList.add('visible');
         }, 50);
     });
@@ -695,18 +793,18 @@ function updateExplanation(fullData) {
 
     // Render insights
     if (insights.length > 0) {
-        explanationSection.classList.remove('hidden');
+        if (explanationSection) explanationSection.classList.remove('hidden');
         insights.forEach((insight) => {
-            const li = document.createElement('li');
-            li.className = `insight-item ${insight.type}`;
-            li.innerHTML = `
+            const div = document.createElement('div');
+            div.className = `insight-item ${insight.type}`;
+            div.innerHTML = `
                 <span class="insight-icon">${insight.icon}</span>
                 <span class="insight-text">${insight.text}</span>
             `;
-            container.appendChild(li);
+            container.appendChild(div);
         });
     } else {
-        explanationSection.classList.add('hidden');
+        if (explanationSection) explanationSection.classList.add('hidden');
     }
 }
 
