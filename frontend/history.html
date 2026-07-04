@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YatrAI | Prediction History</title>
+    <meta name="description" content="View your saved route predictions, traffic statuses, travel times, and sustainability analytics.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/frontend/style.css?v=1.6">
+    <style>
+        .history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            padding: 4px 0;
+        }
+
+        .history-card {
+            background: var(--bg-card);
+            border: none;
+            border-radius: var(--radius-lg);
+            padding: 16px;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .history-card:hover {
+            background: var(--bg-card-hover);
+            transform: translateY(-2px);
+            border-color: var(--border-glass-hover);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+        }
+
+        .history-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .history-route {
+            font-size: 0.95rem;
+            font-weight: 700;
+            line-height: 1.3;
+            color: var(--text-primary);
+        }
+
+        .history-date {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .history-metrics-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            padding-top: 10px;
+            margin-top: 2px;
+        }
+
+        .history-metric-item {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .history-metric-label {
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+
+        .history-metric-value {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .empty-history {
+            text-align: center;
+            padding: 48px 16px;
+            color: var(--text-secondary);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .empty-history-icon {
+            font-size: 3rem;
+            opacity: 0.6;
+        }
+
+        /* Modal styling */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(7, 9, 19, 0.85);
+            backdrop-filter: blur(8px);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal-overlay.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-container {
+            width: calc(100% - 32px);
+            max-width: 440px;
+            background: var(--bg-primary);
+            border: none;
+            border-radius: var(--radius-xl);
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            transform: scale(0.95);
+            transition: transform 0.3s ease;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+        }
+
+        .modal-overlay.open .modal-container {
+            transform: scale(1);
+        }
+
+        .modal-header {
+            padding: 16px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title {
+            font-size: 1.1rem;
+            font-weight: 800;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 320px;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.8rem;
+            cursor: pointer;
+            line-height: 1;
+            padding: 4px;
+            transition: color var(--transition);
+        }
+
+        .modal-close:hover {
+            color: var(--color-red);
+        }
+
+        .modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            flex: 1;
+        }
+
+        .modal-map-container {
+            width: 100%;
+            height: 160px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-glass);
+            margin-bottom: 4px;
+            z-index: 10;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Animated Background Grid -->
+    <div class="bg-grid"></div>
+
+    <!-- Auth Loading Overlay -->
+    <div id="auth-loading-overlay" class="loading-overlay">
+        <div class="loading-spinner">
+            <div class="spinner-ring"></div>
+            <p class="loading-text">Loading history...</p>
+            <p class="loading-sub">Connecting to Firestore database</p>
+        </div>
+    </div>
+
+    <!-- App Device Shell Container -->
+    <div class="app-container hidden" id="app-main-container" style="min-height: auto;">
+        <!-- Header -->
+        <header id="app-header">
+            <div class="header-content">
+                <a href="/" class="back-btn" title="Back to Route Planner" aria-label="Go back" style="text-decoration: none;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="19" y1="12" x2="5" y2="12"></line>
+                        <polyline points="12 19 5 12 12 5"></polyline>
+                    </svg>
+                </a>
+                <div class="logo-section">
+                    <div>
+                        <h1 class="logo-title" style="font-size: 1.25rem;">Trip History</h1>
+                        <p class="logo-tagline">Review your saved route intelligence reports</p>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- User Info Bar -->
+        <div class="user-info-bar">
+            <span class="user-name-display">👋 Hello, <strong id="user-display-name">Guest</strong></span>
+            <div class="user-actions">
+                <a href="/" class="nav-link">🛣️ Planner</a>
+                <span class="nav-divider">|</span>
+                <button onclick="handleLogout()" class="logout-btn">🚪 Logout</button>
+            </div>
+        </div>
+
+        <!-- History Content -->
+        <section class="app-screen">
+            <div class="screen-content" style="gap: 14px;">
+                <h2 class="screen-title" style="font-size: 1.15rem; margin-bottom: 0;">Saved Predictions</h2>
+                
+                <div id="history-container" class="history-list">
+                    <!-- Dynamic history list content -->
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <footer id="app-footer" style="margin-top: 16px;">
+                <div class="footer-content">
+                    <p>© 2026 YatrAI · Intelligent Indian Route Intelligence</p>
+                </div>
+            </footer>
+        </section>
+    </div>
+
+    <!-- Modal Detail Overlay -->
+    <div id="detail-modal" class="modal-overlay" onclick="closeModal(event)">
+        <div class="modal-container" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modal-route-title">Route Summary</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-details-body">
+                <!-- Map Container inside Modal -->
+                <div id="history-map" class="modal-map-container"></div>
+                
+                <div id="modal-dynamic-content">
+                    <!-- Populated dynamically when item clicked -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Imports -->
+    <script type="module" src="/frontend/firebase-config.js"></script>
+    <script type="module">
+        let modalMap = null;
+
+        // Session validation & load history
+        document.addEventListener('DOMContentLoaded', () => {
+            const checkAuth = setInterval(async () => {
+                if (window.initFirebaseConfig && !window.firebaseAuth) {
+                    await window.initFirebaseConfig();
+                }
+                if (window.firebaseOps && window.firebaseAuth) {
+                    clearInterval(checkAuth);
+                    const { onAuthStateChanged } = window.firebaseOps;
+                    onAuthStateChanged(window.firebaseAuth, (user) => {
+                        const overlay = document.getElementById('auth-loading-overlay');
+                        const mainContainer = document.getElementById('app-main-container');
+
+                        if (user) {
+                            // Update display name
+                            const nameEl = document.getElementById('user-display-name');
+                            if (nameEl) nameEl.textContent = user.displayName || user.email.split('@')[0];
+
+                            // Show layout
+                            if (overlay) overlay.classList.add('hidden');
+                            if (mainContainer) mainContainer.classList.remove('hidden');
+
+                            // Load history
+                            fetchUserHistory(user.uid);
+                        } else {
+                            // Redirect to login page
+                            window.location.href = '/login';
+                        }
+                    });
+                }
+            }, 50);
+        });
+
+        // Load Google Maps dynamically
+        (async function() {
+            try {
+                const res = await fetch('/api/config');
+                const conf = await res.json();
+                
+                var s = document.createElement('script');
+                s.src = `https://maps.googleapis.com/maps/api/js?key=${conf.GOOGLE_MAPS_API_KEY}`;
+                s.async = true;
+                s.defer = true;
+                document.body.appendChild(s);
+            } catch (err) {
+                console.error("Failed to fetch API keys for Google Maps:", err);
+            }
+        })();
+
+        // Global sign out
+        window.handleLogout = async function () {
+            if (window.firebaseOps && window.firebaseAuth) {
+                const { signOut } = window.firebaseOps;
+                try {
+                    await signOut(window.firebaseAuth);
+                    window.location.href = '/login';
+                } catch (err) {
+                    console.error("Logout error:", err);
+                }
+            }
+        };
+
+        // Query Firestore for user history
+        async function fetchUserHistory(uid) {
+            const container = document.getElementById('history-container');
+            container.innerHTML = `
+                <div class="loading-spinner" style="padding: 32px 0;">
+                    <div class="spinner-ring" style="width: 32px; height: 32px;"></div>
+                    <p class="loading-sub">Fetching predictions...</p>
+                </div>
+            `;
+
+            try {
+                const { collection, getDocs, query, orderBy } = window.firebaseOps;
+                const historyRef = collection(window.firebaseDb, "users", uid, "history");
+                const q = query(historyRef, orderBy("timestamp", "desc"));
+                const querySnapshot = await getDocs(q);
+
+                container.innerHTML = '';
+
+                if (querySnapshot.empty) {
+                    container.innerHTML = `
+                        <div class="empty-history">
+                            <span class="empty-history-icon">🗺️</span>
+                            <div>
+                                <p style="font-weight: 700; margin-bottom: 4px;">No History Found</p>
+                                <p class="loading-sub">Analyze a route in the planner to save predictions here.</p>
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                querySnapshot.forEach((docSnap) => {
+                    const data = docSnap.data();
+                    const card = createHistoryCard(docSnap.id, data);
+                    container.appendChild(card);
+                });
+            } catch (err) {
+                console.error("Error reading history:", err);
+                container.innerHTML = `
+                    <div class="empty-history">
+                        <span class="empty-history-icon" style="color: var(--color-red);">⚠️</span>
+                        <div>
+                            <p style="font-weight: 700; margin-bottom: 4px; color: var(--color-red);">Failed to Load History</p>
+                            <p class="loading-sub">${err.message || 'Database error occurred.'}</p>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // Helper to format Date
+        function formatDate(timestamp) {
+            if (!timestamp) return 'Just now';
+            const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+            return date.toLocaleString('en-IN', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+            });
+        }
+
+        // Generate dynamic HTML for card
+        function createHistoryCard(id, data) {
+            const card = document.createElement('div');
+            card.className = `history-card border-${data.traffic.toLowerCase().replace('-', '')}`;
+            card.dataset.id = id;
+            
+            // Map vehicle names to icons
+            const vehIcons = {
+                'scooter': '🛵',
+                'motorcycle': '🏍️',
+                'car': '🚗',
+                'suv': '🚙',
+                'auto rickshaw': '🛺',
+                'bus': '🚌',
+                'truck': '🚛'
+            };
+            const vehIcon = vehIcons[data.vehicle.toLowerCase()] || '🚗';
+
+            // Safe traffic color mapping
+            const trafficClass = getSeverityClass(data.traffic);
+            const friendlyTraffic = getFriendlyTraffic(data.traffic);
+
+            card.innerHTML = `
+                <div class="history-card-header">
+                    <div>
+                        <div class="history-route">${data.origin} → ${data.destination}</div>
+                        <div class="history-date">${formatDate(data.timestamp)}</div>
+                    </div>
+                    <span class="cost-hero-badge ${getTrafficBadgeClass(data.traffic)}" style="padding: 3px 8px; font-size: 0.65rem;">
+                        ${friendlyTraffic}
+                    </span>
+                </div>
+                <div class="history-metrics-row">
+                    <div class="history-metric-item">
+                        <span class="history-metric-label">Vehicle</span>
+                        <span class="history-metric-value">${vehIcon} ${data.vehicle}</span>
+                    </div>
+                    <div class="history-metric-item">
+                        <span class="history-metric-label">Travel Time</span>
+                        <span class="history-metric-value">${data.eta}</span>
+                    </div>
+                    <div class="history-metric-item">
+                        <span class="history-metric-label">Distance</span>
+                        <span class="history-metric-value">${data.distance}</span>
+                    </div>
+                </div>
+            `;
+
+            // Click listener opens modal details
+            card.addEventListener('click', () => openPredictionDetails(data));
+
+            return card;
+        }
+
+        // Mapping helpers
+        function getSeverityClass(level) {
+            const map = {
+                'Free-flow': 'severity-freeflow',
+                'Moderate': 'severity-moderate',
+                'Heavy': 'severity-heavy',
+                'Gridlock': 'severity-gridlock',
+                'Low': 'severity-low',
+                'Medium': 'severity-medium',
+                'High': 'severity-high',
+            };
+            return map[level] || '';
+        }
+
+        function getFriendlyTraffic(level) {
+            const labels = {
+                'Free-flow': 'Smooth',
+                'Moderate': 'Moderate',
+                'Heavy': 'Heavy',
+                'Gridlock': 'Gridlock'
+            };
+            return labels[level] || level;
+        }
+
+        function getTrafficBadgeClass(traffic) {
+            if (traffic === 'Free-flow') return 'badge-low-impact';
+            if (traffic === 'Moderate') return 'badge-moderate-impact';
+            if (traffic === 'Heavy') return 'badge-high-impact';
+            return 'badge-veryhigh-impact';
+        }
+
+        function getRiskBadgeClass(risk) {
+            if (risk === 'Low') return 'badge-low-impact';
+            if (risk === 'Medium') return 'badge-high-impact';
+            return 'badge-veryhigh-impact';
+        }
+
+        // Open details modal
+        function openPredictionDetails(data) {
+            const modal = document.getElementById('detail-modal');
+            const title = document.getElementById('modal-route-title');
+            const content = document.getElementById('modal-dynamic-content');
+
+            title.textContent = `${data.origin} → ${data.destination}`;
+
+            // Parse predictionJson
+            let fullPred = null;
+            try {
+                fullPred = JSON.parse(data.predictionJson);
+            } catch (err) {
+                console.error("JSON parsing error:", err);
+            }
+
+            if (!fullPred) {
+                content.innerHTML = `<p class="loading-sub" style="color: var(--color-red);">Failed to render prediction JSON data.</p>`;
+                modal.classList.add('open');
+                return;
+            }
+
+            // Generate structured content displaying all the detail sections
+            content.innerHTML = `
+                <!-- Side by side stats -->
+                <div class="side-by-side-row" style="margin-bottom: 12px;">
+                    <div class="compact-card" style="flex: 1; border-radius: 12px; background: rgba(22, 27, 48, 0.95); padding: 12px;">
+                        <div class="compact-card-icon" style="font-size: 1.3rem; background: none;">🚦</div>
+                        <div class="compact-card-details">
+                            <span class="compact-card-label" style="font-size: 0.65rem;">Traffic</span>
+                            <span class="compact-card-value ${getSeverityClass(data.traffic)}" style="font-size: 1.05rem;">${data.traffic}</span>
+                        </div>
+                    </div>
+                    <div class="compact-card" style="flex: 1; border-radius: 12px; background: rgba(22, 27, 48, 0.95); padding: 12px;">
+                        <div class="compact-card-icon" style="font-size: 1.3rem; background: none;">🛡️</div>
+                        <div class="compact-card-details">
+                            <span class="compact-card-label" style="font-size: 0.65rem;">Road Safety</span>
+                            <span class="compact-card-value ${getSeverityClass(data.accidentRisk)}" style="font-size: 1.05rem;">${data.accidentRisk} Risk</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ETA card -->
+                <div class="detail-card" style="margin-bottom: 12px;">
+                    <div class="detail-card-header">
+                        <div class="detail-card-icon-bg">⏱️</div>
+                        <div class="detail-card-header-text">
+                            <span class="detail-card-subtitle">Estimated Travel Time</span>
+                            <span class="detail-card-title" style="font-size: 1.3rem;">${data.eta}</span>
+                        </div>
+                    </div>
+                    <div class="detail-card-body" style="font-size: 0.78rem;">
+                        <div class="eta-grid">
+                            <div class="eta-grid-cell"><strong>Departure:</strong> ${fullPred.travel_time.departure_time}</div>
+                            <div class="eta-grid-cell"><strong>Arrival:</strong> ${fullPred.travel_time.arrival_time}</div>
+                            <div class="eta-grid-cell opacity-soft">Typical: ${formatMinutes(fullPred.travel_time.base_minutes)}</div>
+                            <div class="eta-grid-cell opacity-soft">Delay: +${formatMinutes(fullPred.travel_time.delay_minutes)}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AQI Card -->
+                <div class="compact-card full-width" style="margin-bottom: 12px; border-left: 3px solid ${fullPred.aqi.color || 'var(--border-glass)'};">
+                    <div class="compact-card-icon">🌬️</div>
+                    <div class="compact-card-details">
+                        <span class="compact-card-label">Air Quality at Destination</span>
+                        <span class="compact-card-value" style="color: ${fullPred.aqi.color};">${fullPred.aqi.aqi} AQI</span>
+                        <span class="compact-card-subtext">${fullPred.aqi.category}</span>
+                    </div>
+                </div>
+
+                <!-- Sustainability Analytics -->
+                <div class="sustainability-section-header" style="margin-top: 12px;">
+                    <div class="sustainability-section-title-wrapper">
+                        <span class="sustainability-section-icon">🌱</span>
+                        <h3 class="sustainability-section-title" style="font-size: 1.1rem;">Sustainability</h3>
+                    </div>
+                    <span class="cost-hero-badge ${getSustainabilityImpactClass(fullPred.sustainability_analytics.environmental_impact_level)}" style="font-size: 0.65rem;">
+                        ${fullPred.sustainability_analytics.environmental_impact_level}
+                    </span>
+                </div>
+                <div class="sustainability-section-divider" style="margin: 8px 0 12px 0;"></div>
+
+                <div class="journey-grid-metrics" style="margin-bottom: 12px;">
+                    <div class="journey-metric-box">
+                        <span class="journey-metric-lbl">Fuel Cost</span>
+                        <span class="journey-metric-val" style="color: var(--accent-green);">${data.fuelCost}</span>
+                    </div>
+                    <div class="journey-metric-box">
+                        <span class="journey-metric-lbl">CO₂ Emission</span>
+                        <span class="journey-metric-val" style="color: var(--accent-green);">${data.co2}</span>
+                    </div>
+                    <div class="journey-metric-box">
+                        <span class="journey-metric-lbl">Tree Offset</span>
+                        <span class="journey-metric-val">${fullPred.sustainability_analytics.tree_days} Tree-Days</span>
+                    </div>
+                    <div class="journey-metric-box">
+                        <span class="journey-metric-lbl">Fuel Needed</span>
+                        <span class="journey-metric-val">${fullPred.fuel_estimation.fuel_needed_liters} L</span>
+                    </div>
+                </div>
+
+                <!-- Environmental Interpretation -->
+                <div class="compact-card full-width border-accent-left" style="margin-bottom: 12px; padding: 12px;">
+                    <div class="compact-card-icon" style="font-size: 1.3rem;">🌳</div>
+                    <div class="compact-card-details">
+                        <span class="compact-card-label" style="font-size: 0.65rem;">Offset Interpretation</span>
+                        <span class="compact-card-desc-text" style="font-size: 0.8rem;">${fullPred.sustainability_analytics.tree_offset_interpretation}</span>
+                    </div>
+                </div>
+
+                <!-- AI Trip Insights -->
+                <h3 class="subsection-title" style="margin: 12px 0 8px 0; font-size: 0.75rem;">AI Trip Insights</h3>
+                <div class="compact-card full-width padding-large" style="margin-bottom: 12px;">
+                    <div class="compact-card-icon">💬</div>
+                    <div class="compact-card-details">
+                        <span class="compact-card-label">Trip Summary</span>
+                        <span class="compact-card-desc-text" style="font-size: 0.8rem;">${fullPred.ai_summary.summary}</span>
+                    </div>
+                </div>
+
+                <div class="recommendations-container-card" style="gap: 12px;">
+                    <div class="rec-item">
+                        <div class="rec-icon-bg">🛣️</div>
+                        <div class="rec-content">
+                            <span class="rec-title">Travel Recommendation</span>
+                            <span class="rec-description-text" style="font-size: 0.78rem;">${fullPred.ai_summary.travel_recommendation}</span>
+                        </div>
+                    </div>
+                    <div class="rec-item">
+                        <div class="rec-icon-bg">🛡️</div>
+                        <div class="rec-content">
+                            <span class="rec-title">Safety Recommendation</span>
+                            <span class="rec-description-text" style="font-size: 0.78rem;">${fullPred.ai_summary.safety_recommendation}</span>
+                        </div>
+                    </div>
+                    <div class="rec-item">
+                        <div class="rec-icon-bg">🌱</div>
+                        <div class="rec-content">
+                            <span class="rec-title">Eco Recommendation</span>
+                            <span class="rec-description-text" style="font-size: 0.78rem;">${fullPred.sustainability_analytics.eco_recommendation || 'Drive smoothly to limit carbon footprint.'}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Weather Card -->
+                <h3 class="subsection-title" style="margin: 16px 0 8px 0; font-size: 0.75rem;">Weather at Destination</h3>
+                <div class="weather-grid">
+                    <div class="weather-item">
+                        <span class="weather-item-icon">🌡️</span>
+                        <div>
+                            <div class="weather-item-value">${fullPred.weather.temp_c}°C</div>
+                            <div class="weather-item-label">Temp</div>
+                        </div>
+                    </div>
+                    <div class="weather-item">
+                        <span class="weather-item-icon">🌧️</span>
+                        <div>
+                            <div class="weather-item-value">${fullPred.weather.rain_mm} mm</div>
+                            <div class="weather-item-label">Rain</div>
+                        </div>
+                    </div>
+                    <div class="weather-item">
+                        <span class="weather-item-icon">👁️</span>
+                        <div>
+                            <div class="weather-item-value">${fullPred.weather.visibility_km} km</div>
+                            <div class="weather-item-label">Visibility</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Open Modal
+            modal.classList.add('open');
+
+            // Draw route on Leaflet Map
+            initModalMap(fullPred);
+        }
+
+        const darkMapStyle = [
+            { elementType: "geometry", stylers: [{ color: "#0B0F1F" }] },
+            { elementType: "labels.text.stroke", stylers: [{ color: "#0B0F1F" }] },
+            { elementType: "labels.text.fill", stylers: [{ color: "#8b949e" }] },
+            { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#58a6ff" }] },
+            { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#8b949e" }] },
+            { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#091c28" }] },
+            { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#488258" }] },
+            { featureType: "road", elementType: "geometry", stylers: [{ color: "#161b30" }] },
+            { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#21263d" }] },
+            { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#8b949e" }] },
+            { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#1f293d" }] },
+            { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#28354e" }] },
+            { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#f3f4f6" }] },
+            { featureType: "transit", elementType: "geometry", stylers: [{ color: "#1f293d" }] },
+            { featureType: "water", elementType: "geometry", stylers: [{ color: "#070b19" }] },
+            { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#58a6ff" }] }
+        ];
+
+        const lightMapStyle = [
+            { elementType: "geometry", stylers: [{ color: "#f5f5f5" }] },
+            { elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
+            { elementType: "labels.text.stroke", stylers: [{ color: "#f5f5f5" }] },
+            { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
+            { featureType: "water", elementType: "geometry", stylers: [{ color: "#e9e9e9" }] }
+        ];
+
+        function getCongestionColor(level) {
+            const colors = {
+                'Free-flow': '#5DCAA5',
+                'Moderate': '#EF9F27',
+                'Heavy': '#D4537E',
+                'Gridlock': '#E24B4A'
+            };
+            return colors[level] || '#2563eb';
+        }
+
+        // Render Google Map from saved prediction coordinates
+        function initModalMap(data) {
+            let mapDiv = document.getElementById('history-map');
+            if (!data.origin || !data.destination) {
+                mapDiv.style.display = 'none';
+                return;
+            }
+            mapDiv.style.display = 'block';
+
+            let originLat, originLng, destLat, destLng;
+            let parsedData = null;
+
+            if (data.predictionJson) {
+                try {
+                    parsedData = JSON.parse(data.predictionJson);
+                } catch (e) {
+                    console.error("Failed to parse predictionJson for coordinates:", e);
+                }
+            }
+
+            if (parsedData) {
+                originLat = parseFloat(parsedData.origin.lat);
+                originLng = parseFloat(parsedData.origin.lon);
+                destLat = parseFloat(parsedData.destination.lat);
+                destLng = parseFloat(parsedData.destination.lon);
+            } else {
+                originLat = parseFloat(data.origin.lat);
+                originLng = parseFloat(data.origin.lon);
+                destLat = parseFloat(data.destination.lat);
+                destLng = parseFloat(data.destination.lon);
+            }
+
+            const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+
+            const mapOptions = {
+                center: { lat: originLat, lng: originLng },
+                zoom: 12,
+                styles: isLight ? lightMapStyle : darkMapStyle,
+                zoomControl: false,
+                streetViewControl: false,
+                mapTypeControl: false,
+                fullscreenControl: false
+            };
+
+            modalMap = new google.maps.Map(mapDiv, mapOptions);
+
+            // Clean previous markers & polylines
+            if (window.modalMarkers) {
+                window.modalMarkers.forEach(m => m.setMap(null));
+            }
+            window.modalMarkers = [];
+
+            if (window.modalPolyline) {
+                window.modalPolyline.setMap(null);
+                window.modalPolyline = null;
+            }
+
+            // Draw custom green origin marker
+            const startMarker = new google.maps.Marker({
+                position: { lat: originLat, lng: originLng },
+                map: modalMap,
+                icon: {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 6,
+                    fillColor: '#00e676',
+                    fillOpacity: 0.9,
+                    strokeColor: '#ffffff',
+                    strokeWeight: 1.5
+                }
+            });
+            window.modalMarkers.push(startMarker);
+
+            // Draw custom pink destination marker
+            const endMarker = new google.maps.Marker({
+                position: { lat: destLat, lng: destLng },
+                map: modalMap,
+                icon: {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 6,
+                    fillColor: '#ff2d95',
+                    fillOpacity: 0.9,
+                    strokeColor: '#ffffff',
+                    strokeWeight: 1.5
+                }
+            });
+            window.modalMarkers.push(endMarker);
+
+            // Decode and draw route polyline from backend geometry JSON
+            let geometry = null;
+            if (parsedData) {
+                geometry = parsedData.route && parsedData.route.geometry;
+            } else if (data.route) {
+                geometry = data.route.geometry;
+            }
+
+            const cleanCongestionLevel = data.traffic || (parsedData && parsedData.congestion && parsedData.congestion.level) || 'Free-flow';
+
+            if (geometry && geometry.coordinates) {
+                const pathCoords = geometry.coordinates.map(c => ({
+                    lat: parseFloat(c[1]),
+                    lng: parseFloat(c[0])
+                }));
+
+                const routeColor = getCongestionColor(cleanCongestionLevel);
+
+                window.modalPolyline = new google.maps.Polyline({
+                    path: pathCoords,
+                    geodesic: true,
+                    strokeColor: routeColor,
+                    strokeOpacity: 0.9,
+                    strokeWeight: 5,
+                    map: modalMap
+                });
+
+                // Adjust bounds after rendering
+                const bounds = new google.maps.LatLngBounds();
+                pathCoords.forEach(coord => bounds.extend(coord));
+                setTimeout(() => {
+                    google.maps.event.trigger(modalMap, 'resize');
+                    modalMap.fitBounds(bounds);
+                }, 150);
+            } else {
+                const bounds = new google.maps.LatLngBounds();
+                bounds.extend({ lat: originLat, lng: originLng });
+                bounds.extend({ lat: destLat, lng: destLng });
+                setTimeout(() => {
+                    google.maps.event.trigger(modalMap, 'resize');
+                    modalMap.fitBounds(bounds);
+                }, 150);
+            }
+        }
+
+        // Close Modal
+        function closeModal(event) {
+            const modal = document.getElementById('detail-modal');
+            modal.classList.remove('open');
+            if (window.modalMarkers) {
+                window.modalMarkers.forEach(m => m.setMap(null));
+                window.modalMarkers = [];
+            }
+            if (window.modalPolyline) {
+                window.modalPolyline.setMap(null);
+                window.modalPolyline = null;
+            }
+            modalMap = null;
+        }
+
+        // Helpers
+        function formatMinutes(minutes) {
+            if (minutes == null || isNaN(minutes)) return '—';
+            const m = Math.round(minutes);
+            if (m < 60) return `${m} min`;
+            const h = Math.floor(m / 60);
+            const rem = m % 60;
+            return rem > 0 ? `${h} hr ${rem} min` : `${h} hr`;
+        }
+
+        function getSustainabilityImpactClass(level) {
+            if (level === 'Low Impact') return 'badge-low-impact';
+            if (level === 'Moderate Impact') return 'badge-moderate-impact';
+            if (level === 'High Impact') return 'badge-high-impact';
+            return 'badge-veryhigh-impact';
+        }
+    </script>
+</body>
+
+</html>

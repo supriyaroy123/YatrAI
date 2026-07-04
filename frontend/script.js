@@ -4,17 +4,27 @@
    ═══════════════════════════════════════════════════════════════ */
 
 // ── State ────────────────────────────────────────────────────────
-let map;
-let routeLayer = null;
-let markersLayer = null;
+let googleMap;
+let routePolyline = null;
+let trafficLayer = null;
+let autocompleteOrigin;
+let autocompleteDestination;
+let currentMarkers = [];
+window._originLat = null;
+window._originLng = null;
+window._destLat = null;
+window._destLng = null;
+let trafficEnabled = false;
+let _lastRouteData = null; // cache for route redraw on traffic toggle
+let mapInitialized = false; // guard to prevent double-init
+
 let selectedVehicle = 'Car';
 let lastPredictionData = null;     // cache to re-predict on vehicle change
 let hasPredicted = false;          // track if user has predicted at least once
-let currentTileLayer = null;       // track map tiles for theme swap
 
 // ── DOM References ───────────────────────────────────────────────
-const originInput = document.getElementById('origin-input');
-const destInput = document.getElementById('destination-input');
+const originInput = document.getElementById('loc-start');
+const destInput = document.getElementById('loc-end');
 const predictBtn = document.getElementById('predict-btn');
 const loadingOverlay = document.getElementById('loading-overlay');
 const resultsSection = document.getElementById('screen-results');
@@ -26,7 +36,14 @@ const errorToastMsg = document.getElementById('error-toast-msg');
 // ── Initialize ───────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
-    initMap();
+
+    // ── Ensure inputs are always usable regardless of Maps API state ──
+
+    // If Google Maps already loaded synchronously, init map now
+    if (typeof google !== 'undefined' && google.maps) {
+        try { initMap(); } catch(e) { console.warn('Maps init error:', e); }
+    }
+    // else initMap() will be called by Maps API callback (see script tag)
     initVehicleSelector();
     initKeyboardShortcuts();
     initDepartureTime();
@@ -93,9 +110,9 @@ function initResultsNavigation() {
             });
 
             // Refresh map size if the overview tab becomes active
-            if (targetTab === 'overview' && map) {
+            if (targetTab === 'overview' && googleMap) {
                 setTimeout(() => {
-                    map.invalidateSize();
+                    google.maps.event.trigger(googleMap, 'resize');
                 }, 50);
             }
         });
@@ -115,42 +132,166 @@ function initResultsNavigation() {
     }
 }
 
-function getMapTileUrl() {
-    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-    return isLight
-        ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
-        : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-}
+const darkMapStyle = [
+    { elementType: "geometry", stylers: [{ color: "#0B0F1F" }] },
+    { elementType: "labels.text.stroke", stylers: [{ color: "#0B0F1F" }] },
+    { elementType: "labels.text.fill", stylers: [{ color: "#8b949e" }] },
+    { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#58a6ff" }] },
+    { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#8b949e" }] },
+    { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#091c28" }] },
+    { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#488258" }] },
+    { featureType: "road", elementType: "geometry", stylers: [{ color: "#161b30" }] },
+    { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#21263d" }] },
+    { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#8b949e" }] },
+    { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#1f293d" }] },
+    { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#28354e" }] },
+    { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#f3f4f6" }] },
+    { featureType: "transit", elementType: "geometry", stylers: [{ color: "#1f293d" }] },
+    { featureType: "water", elementType: "geometry", stylers: [{ color: "#070b19" }] },
+    { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#58a6ff" }] }
+];
+
+const lightMapStyle = [
+    { elementType: "geometry", stylers: [{ color: "#f5f5f5" }] },
+    { elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
+    { elementType: "labels.text.stroke", stylers: [{ color: "#f5f5f5" }] },
+    { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
+    { featureType: "water", elementType: "geometry", stylers: [{ color: "#e9e9e9" }] }
+];
 
 function updateMapTiles() {
-    if (!map) return;
-    if (currentTileLayer) {
-        map.removeLayer(currentTileLayer);
-    }
-    currentTileLayer = L.tileLayer(getMapTileUrl(), {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
-        subdomains: 'abcd',
-        maxZoom: 19,
-    }).addTo(map);
+    if (!googleMap) return;
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    googleMap.setOptions({
+        styles: isLight ? lightMapStyle : darkMapStyle
+    });
 }
 
 // ── Initialize Map ───────────────────────────────────────────────
-function initMap() {
-    map = L.map('map', {
-        center: [22.5, 78.5],
-        zoom: 5,
-        zoomControl: true,
-        attributionControl: true,
+window.initMap = function initMap() {
+    if (mapInitialized) return;
+    mapInitialized = true;
+
+    try {
+        const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+        const mapOptions = {
+            center: { lat: 20.5937, lng: 78.9629 }, // Center of India
+            zoom: 5,
+            styles: isLight ? lightMapStyle : darkMapStyle,
+            zoomControl: true,
+            streetViewControl: false,
+            mapTypeControl: false,
+            fullscreenControl: false
+        };
+
+        const mapEl = document.getElementById('map');
+        if (mapEl) {
+            googleMap = new google.maps.Map(mapEl, mapOptions);
+        }
+
+        // Try to init Places autocomplete — but NEVER let it break the form
+        try { initAutocomplete(); } catch(e) { console.warn('Places autocomplete unavailable:', e); }
+
+    } catch(e) {
+        console.warn('Google Maps failed to initialize — map features disabled:', e);
+    }
+};
+
+function initAutocomplete() {
+    if (!google || !google.maps || !google.maps.places) {
+        console.warn('Places API not available — using plain text input');
+        return;
+    }
+
+    autocompleteOrigin = new google.maps.places.Autocomplete(originInput, {
+        componentRestrictions: { country: "in" },
+        fields: ["formatted_address", "geometry"]
+    });
+    autocompleteDestination = new google.maps.places.Autocomplete(destInput, {
+        componentRestrictions: { country: "in" },
+        fields: ["formatted_address", "geometry"]
     });
 
-    currentTileLayer = L.tileLayer(getMapTileUrl(), {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
-        subdomains: 'abcd',
-        maxZoom: 19,
-    }).addTo(map);
+    // Removing the autocomplete attribute override so Chrome's contact chip doesn't reappear
 
-    routeLayer = L.layerGroup().addTo(map);
-    markersLayer = L.layerGroup().addTo(map);
+
+    // Listeners for selection
+    autocompleteOrigin.addListener("place_changed", () => {
+        const place = autocompleteOrigin.getPlace();
+        if (place.geometry && place.geometry.location) {
+            window._originLat = place.geometry.location.lat();
+            window._originLng = place.geometry.location.lng();
+        }
+    });
+    autocompleteDestination.addListener("place_changed", () => {
+        const place = autocompleteDestination.getPlace();
+        if (place.geometry && place.geometry.location) {
+            window._destLat = place.geometry.location.lat();
+            window._destLng = place.geometry.location.lng();
+        }
+    });
+
+    // Reset coordinates if user types manually to force geocoding fallback
+    originInput.addEventListener("input", () => {
+        window._originLat = null;
+        window._originLng = null;
+    });
+    destInput.addEventListener("input", () => {
+        window._destLat = null;
+        window._destLng = null;
+    });
+}
+
+// ── Google Maps Geocoding & Traffic Helpers ───────────────────────
+async function geocodeAddress(address) {
+    const geocoder = new google.maps.Geocoder();
+    return new Promise((resolve, reject) => {
+        geocoder.geocode({ address: address, componentRestrictions: { country: "in" } }, (results, status) => {
+            if (status === "OK" && results && results[0]) {
+                const loc = results[0].geometry.location;
+                resolve({ lat: loc.lat(), lng: loc.lng(), formatted: results[0].formatted_address });
+            } else {
+                reject(new Error(`Geocoding status: ${status}`));
+            }
+        });
+    });
+}
+
+window.toggleTraffic = function() {
+    trafficEnabled = !trafficEnabled;
+    const btn = document.getElementById('traffic-toggle');
+    const label = btn ? btn.querySelector('span') : null;
+    
+    if (trafficEnabled) {
+        if (!trafficLayer) {
+            trafficLayer = new google.maps.TrafficLayer();
+        }
+        trafficLayer.setMap(googleMap);
+        if (btn) btn.classList.add('active');
+        if (label) label.textContent = 'Traffic: On';
+    } else {
+        if (trafficLayer) {
+            trafficLayer.setMap(null);
+        }
+        if (btn) btn.classList.remove('active');
+        if (label) label.textContent = 'Traffic: Off';
+    }
+
+    // Redraw route with or without traffic model so the polyline reflects
+    // the chosen mode (traffic-aware vs fastest no-traffic path)
+    if (_lastRouteData) {
+        drawRoute(_lastRouteData);
+    }
+};
+
+function getCongestionColor(level) {
+    const colors = {
+        'Free-flow': '#5DCAA5',
+        'Moderate': '#EF9F27',
+        'Heavy': '#D4537E',
+        'Gridlock': '#E24B4A'
+    };
+    return colors[level] || '#2563eb';
 }
 
 // ── Vehicle Selector ─────────────────────────────────────────────
@@ -270,6 +411,30 @@ async function handlePredict() {
 
     showLoading(true);
 
+    let originLat = window._originLat;
+    let originLng = window._originLng;
+    let destLat = window._destLat;
+    let destLng = window._destLng;
+
+    try {
+        if (!originLat || !originLng) {
+            const geo = await geocodeAddress(origin);
+            originLat = geo.lat;
+            originLng = geo.lng;
+            window._originLat = originLat;
+            window._originLng = originLng;
+        }
+        if (!destLat || !destLng) {
+            const geo = await geocodeAddress(destination);
+            destLat = geo.lat;
+            destLng = geo.lng;
+            window._destLat = destLat;
+            window._destLng = destLng;
+        }
+    } catch (geoErr) {
+        console.warn("Google Geocoding failed, falling back to string query:", geoErr);
+    }
+
     try {
         const response = await fetch('/predict', {
             method: 'POST',
@@ -280,7 +445,12 @@ async function handlePredict() {
                 vehicle_type: selectedVehicle,
                 departure_time: departureTime,
                 fuel_mode: fuelMode,
-                custom_mileage: fuelMode === 'custom' ? customMileageVal : null
+                custom_mileage: fuelMode === 'custom' ? customMileageVal : null,
+                // Pass coordinates resolved by Google Maps to skip backend Nominatim geocoding
+                origin_lat: originLat || null,
+                origin_lon: originLng || null,
+                dest_lat: destLat || null,
+                dest_lon: destLng || null,
             }),
         });
 
@@ -330,21 +500,106 @@ async function handlePredict() {
         updateExplanation(data);
         updateWeather(data.weather);
 
-        // Refresh Leaflet map layout since it was loaded hidden
-        if (map) {
+        // Save prediction history to Firestore
+        try {
+            if (window.firebaseAuth && window.firebaseDb && window.firebaseOps && window.firebaseAuth.currentUser) {
+                const uid = window.firebaseAuth.currentUser.uid;
+                const { collection, addDoc, serverTimestamp } = window.firebaseOps;
+                
+                const historyData = {
+                    timestamp: serverTimestamp(),
+                    origin: data.origin.name,
+                    originDisplay: data.origin.display_name,
+                    destination: data.destination.name,
+                    destinationDisplay: data.destination.display_name,
+                    vehicle: data.vehicle_type,
+                    eta: formatTime(data.travel_time.eta_minutes),
+                    etaMinutes: data.travel_time.eta_minutes,
+                    traffic: data.congestion.level,
+                    aqi: data.aqi.aqi || 0,
+                    weather: `${data.weather.temp_c}°C · ${data.weather.rain_mm} mm rain`,
+                    weatherFull: data.weather,
+                    fuelCost: `₹${data.fuel_estimation.fuel_cost_rupees}`,
+                    co2: `${data.sustainability_analytics.co2_emission_kg} kg`,
+                    accidentRisk: data.accident_risk.level,
+                    distance: `${data.route.distance_km} km`,
+                    predictionJson: JSON.stringify(data)
+                };
+                
+                await addDoc(collection(window.firebaseDb, "users", uid, "history"), historyData);
+                console.log("Prediction history saved to Firestore!");
+            }
+        } catch (dbErr) {
+            console.error("Failed to save history to Firestore:", dbErr);
+        }
+
+        // Refresh Google map layout since it was loaded hidden
+        if (googleMap) {
             setTimeout(() => {
-                map.invalidateSize();
+                google.maps.event.trigger(googleMap, 'resize');
             }, 100);
         }
 
         // Scroll layout to top
         window.scrollTo({ top: 0, behavior: 'smooth' });
 
+        // ── Async AI Insights (non-blocking, fetched after fast main result) ──
+        // Fire and forget — patches AI text fields when Gemini responds
+        fetchAndInjectInsights(data).catch(e => console.warn('Insights fetch failed:', e));
+
     } catch (err) {
         showToast(err.message || 'Failed to get prediction. Please try again.');
     } finally {
         showLoading(false);
     }
+}
+
+// ── Async AI Insights Fetcher ────────────────────────────────────────
+async function fetchAndInjectInsights(data) {
+    const payload = {
+        origin: data.origin.name,
+        destination: data.destination.name,
+        vehicle_type: data.vehicle_type,
+        congestion_level: data.congestion.level,
+        confidence: data.congestion.confidence || 0.5,
+        eta_minutes: data.travel_time.eta_minutes,
+        accident_risk: data.accident_risk.level,
+        aqi: data.aqi.aqi || -1,
+        temp_c: data.weather.temp_c,
+        rain_mm: data.weather.rain_mm,
+        visibility_km: data.weather.visibility_km,
+        departure_time: null,
+        fuel_needed_liters: data.fuel_estimation.fuel_needed_liters,
+        fuel_cost_rupees: data.fuel_estimation.fuel_cost_rupees,
+        traffic_impact_percent: data.fuel_estimation.traffic_impact_percent,
+        co2_emission_kg: data.sustainability_analytics.co2_emission_kg,
+    };
+
+    const res = await fetch('/predict/insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    if (!res.ok) return;
+    const insights = await res.json();
+
+    // Inject AI Travel Summary (AI insights tab)
+    const summaryEl = document.getElementById('ai-summary-text');
+    if (summaryEl && insights.summary) summaryEl.textContent = insights.summary;
+
+    const travelRecEl = document.getElementById('ai-travel-rec');
+    if (travelRecEl && insights.travel_recommendation) travelRecEl.textContent = insights.travel_recommendation;
+
+    const safetyRecEl = document.getElementById('ai-safety-rec');
+    if (safetyRecEl && insights.safety_recommendation) safetyRecEl.textContent = insights.safety_recommendation;
+
+    // Inject fuel insight into Cost & Eco tab
+    const fuelInsightEl = document.getElementById('fuel-insight-text');
+    if (fuelInsightEl && insights.fuel_insight) fuelInsightEl.textContent = insights.fuel_insight;
+
+    // Inject sustainability insight
+    const sustainInsightEl = document.getElementById('sustain-ai-insight-text');
+    if (sustainInsightEl && insights.sustainability_insight) sustainInsightEl.textContent = insights.sustainability_insight;
 }
 
 // ── Update Results Cards ─────────────────────────────────────────
@@ -612,67 +867,91 @@ function updateResults(data) {
 
 // ── Update Map ───────────────────────────────────────────────────
 function updateMap(data) {
-    routeLayer.clearLayers();
-    markersLayer.clearLayers();
+    _lastRouteData = data; // cache for traffic toggle redraws
+
+    // Clear custom markers
+    currentMarkers.forEach(m => m.setMap(null));
+    currentMarkers = [];
+
+    const originLat = parseFloat(data.origin.lat);
+    const originLng = parseFloat(data.origin.lon);
+    const destLat = parseFloat(data.destination.lat);
+    const destLng = parseFloat(data.destination.lon);
+
+    window._originLat = originLat;
+    window._originLng = originLng;
+    window._destLat = destLat;
+    window._destLng = destLng;
+
+    // Draw Origin Marker
+    const originMarker = new google.maps.Marker({
+        position: { lat: originLat, lng: originLng },
+        map: googleMap,
+        title: `Origin: ${data.origin.display_name}`,
+        icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 8,
+            fillColor: '#00e676',
+            fillOpacity: 0.9,
+            strokeColor: '#ffffff',
+            strokeWeight: 2
+        }
+    });
+    currentMarkers.push(originMarker);
+
+    // Draw Destination Marker
+    const destMarker = new google.maps.Marker({
+        position: { lat: destLat, lng: destLng },
+        map: googleMap,
+        title: `Destination: ${data.destination.display_name}`,
+        icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 8,
+            fillColor: '#ff2d95',
+            fillOpacity: 0.9,
+            strokeColor: '#ffffff',
+            strokeWeight: 2
+        }
+    });
+    currentMarkers.push(destMarker);
+
+    drawRoute(data);
+}
+
+// ── Draw Route Polyline (optimal ML-predicted path) ────────────────
+function drawRoute(data) {
+    if (!googleMap) return;
+
+    // Clear previous polyline
+    if (routePolyline) {
+        routePolyline.setMap(null);
+        routePolyline = null;
+    }
 
     const geometry = data.route.geometry;
     if (!geometry || !geometry.coordinates) return;
 
-    // GeoJSON coordinates are [lon, lat], Leaflet needs [lat, lon]
-    const coords = geometry.coordinates.map(c => [c[1], c[0]]);
+    // Convert GeoJSON [lon, lat] coordinates to Google Maps LatLng
+    const pathCoords = geometry.coordinates.map(c => ({
+        lat: parseFloat(c[1]),
+        lng: parseFloat(c[0])
+    }));
 
-    // Draw route polyline
-    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-    const polyline = L.polyline(coords, {
-        color: isLight ? '#5b21b6' : '#00d4ff',
-        weight: 4,
-        opacity: 0.85,
-        smoothFactor: 1.5,
-        dashArray: '12, 8',
-        dashOffset: '0',
+    const routeColor = getCongestionColor(data.congestion.level);
+
+    routePolyline = new google.maps.Polyline({
+        path: pathCoords,
+        geodesic: true,
+        strokeColor: routeColor,
+        strokeOpacity: 0.9,
+        strokeWeight: 6,
+        map: googleMap
     });
-    routeLayer.addLayer(polyline);
 
-    // Animate dash offset
-    let offset = 0;
-    const animateDash = () => {
-        offset -= 0.5;
-        polyline.setStyle({ dashOffset: String(offset) });
-        requestAnimationFrame(animateDash);
-    };
-    animateDash();
-
-    // Origin marker (green)
-    const originMarker = L.circleMarker([data.origin.lat, data.origin.lon], {
-        radius: 10,
-        fillColor: '#00e676',
-        color: isLight ? '#333' : '#fff',
-        weight: 2,
-        fillOpacity: 0.9,
-    }).bindPopup(`<strong>Origin:</strong> ${data.origin.display_name}`);
-    markersLayer.addLayer(originMarker);
-
-    // Destination marker (red/pink)
-    const destMarker = L.circleMarker([data.destination.lat, data.destination.lon], {
-        radius: 10,
-        fillColor: '#ff2d95',
-        color: isLight ? '#333' : '#fff',
-        weight: 2,
-        fillOpacity: 0.9,
-    }).bindPopup(`<strong>Destination:</strong> ${data.destination.display_name}`);
-    markersLayer.addLayer(destMarker);
-
-    // Fit map bounds
-    const bounds = L.latLngBounds(coords);
-    if (map) {
-        setTimeout(() => {
-            map.invalidateSize();
-            map.fitBounds(bounds, { 
-                padding: [40, 40],
-                maxZoom: 15
-            });
-        }, 250);
-    }
+    // Fit bounds to show the entire route
+    const bounds = new google.maps.LatLngBounds();
+    pathCoords.forEach(coord => bounds.extend(coord));
+    googleMap.fitBounds(bounds);
 }
 
 // ── Update Route Insights ────────────────────────────────────────

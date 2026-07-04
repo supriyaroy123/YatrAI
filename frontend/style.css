@@ -127,7 +127,6 @@ body {
 /*  Header  */
 #app-header {
     background: var(--bg-primary);
-    border-bottom: 1px solid var(--border-glass);
     padding: 16px 20px;
     position: sticky;
     top: 0;
@@ -271,6 +270,7 @@ body {
     width: 100%;
     padding: 12px 14px 12px 42px;
     background: var(--bg-input);
+    background-image: none !important; /* Prevents Google Maps from injecting error icons */
     border: 1px solid var(--border-glass);
     border-radius: var(--radius-md);
     color: var(--text-primary);
@@ -279,6 +279,20 @@ body {
     font-weight: 500;
     outline: none;
     transition: var(--transition);
+}
+
+/* Reset search input styling so it looks identical to text input */
+.input-wrapper input[type="search"] {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+}
+.input-wrapper input[type="search"]::-webkit-search-decoration,
+.input-wrapper input[type="search"]::-webkit-search-cancel-button,
+.input-wrapper input[type="search"]::-webkit-search-results-button,
+.input-wrapper input[type="search"]::-webkit-search-results-decoration {
+    -webkit-appearance: none;
+    display: none;
 }
 
 .input-wrapper input:focus {
@@ -509,31 +523,15 @@ body {
     border: 1px solid var(--border-glass);
     border-radius: var(--radius-lg);
     overflow: hidden;
-    padding: 4px;
+    position: relative;
 }
 
 .map-container {
     width: 100%;
-    height: 180px;
-    border-radius: var(--radius-md);
+    height: 200px;
     background: var(--bg-input);
-    border: 1px solid var(--border-glass);
+    display: block;
     z-index: 1;
-}
-
-/* Leaflet dark theme corrections */
-.leaflet-control-attribution {
-    background: rgba(11, 14, 26, 0.8) !important;
-    color: var(--text-muted) !important;
-    font-size: 9px !important;
-}
-.leaflet-control-attribution a {
-    color: var(--accent-blue-hover) !important;
-}
-.leaflet-control-zoom a {
-    background: var(--bg-card) !important;
-    color: var(--text-primary) !important;
-    border-color: var(--border-glass) !important;
 }
 
 /*  Side-by-side row  */
@@ -546,12 +544,13 @@ body {
 /*  Compact card design  */
 .compact-card {
     background: var(--bg-card);
-    border: 1px solid var(--border-glass);
+    border: none;
     border-radius: var(--radius-lg);
     padding: 14px 16px;
     display: flex;
     align-items: center;
     gap: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 }
 
 .compact-card.full-width {
@@ -614,9 +613,10 @@ body {
 /*  Large Detail Card  */
 .detail-card {
     background: var(--bg-card);
-    border: 1px solid var(--border-glass);
+    border: none;
     border-radius: var(--radius-lg);
     padding: 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 }
 
 .detail-card-header {
@@ -683,12 +683,13 @@ body {
 
 .weather-item {
     background: var(--bg-card);
-    border: 1px solid var(--border-glass);
+    border: none;
     border-radius: var(--radius-md);
     padding: 10px 12px;
     display: flex;
     align-items: center;
     gap: 8px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
 .weather-item-icon {
@@ -708,12 +709,13 @@ body {
 /*  Cost Hero Card  */
 .cost-hero-card {
     background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(16, 185, 129, 0.03));
-    border: 1px solid rgba(16, 185, 129, 0.18);
+    border: none;
     border-radius: var(--radius-lg);
     padding: 16px;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.08);
 }
 
 .cost-hero-details {
@@ -755,11 +757,12 @@ body {
 
 .journey-metric-box {
     background: var(--bg-card);
-    border: 1px solid var(--border-glass);
+    border: none;
     border-radius: var(--radius-md);
     padding: 12px 14px;
     display: flex;
     flex-direction: column;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .journey-metric-lbl {
@@ -776,12 +779,13 @@ body {
 /*  Recommendations Container Card  */
 .recommendations-container-card {
     background: var(--bg-card);
-    border: 1px solid var(--border-glass);
+    border: none;
     border-radius: var(--radius-lg);
     padding: 16px;
     display: flex;
     flex-direction: column;
     gap: 14px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 }
 
 .rec-item {

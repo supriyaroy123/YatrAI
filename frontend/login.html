@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login to YatrAI | Smart Traffic Intelligence</title>
+    <meta name="description"
+        content="Access YatrAI to predict traffic congestion, route travel time, safety risk, and carbon emissions.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/frontend/style.css?v=1.2">
+    <style>
+        .auth-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-xl);
+            padding: 28px 24px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .auth-header {
+            text-align: center;
+            margin-bottom: 8px;
+        }
+
+        .auth-logo {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 12px;
+        }
+
+        .auth-title {
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            color: var(--text-primary);
+        }
+
+        .auth-subtitle {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .auth-tabs {
+            display: flex;
+            background: var(--bg-input);
+            border-radius: var(--radius-md);
+            padding: 4px;
+            border: 1px solid var(--border-glass);
+            margin-bottom: 8px;
+        }
+
+        .auth-tab-btn {
+            flex: 1;
+            background: none;
+            border: none;
+            padding: 10px 0;
+            font-family: inherit;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+        }
+
+        .auth-tab-btn.active {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .auth-form {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .auth-btn {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            border: none;
+            border-radius: var(--radius-md);
+            padding: 14px;
+            color: #ffffff;
+            font-family: inherit;
+            font-size: 0.95rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: var(--transition);
+            margin-top: 6px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .auth-btn:hover {
+            background: linear-gradient(135deg, var(--accent-blue-hover), var(--accent-purple));
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.35);
+        }
+
+        .auth-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .input-icon-left {
+            position: absolute;
+            left: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .input-wrapper input {
+            padding-left: 42px;
+        }
+
+        .alert-box {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: var(--color-red);
+            border-radius: var(--radius-md);
+            padding: 12px 14px;
+            font-size: 0.8rem;
+            line-height: 1.4;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Animated Background Grid -->
+    <div class="bg-grid"></div>
+
+    <!-- Error Toast -->
+    <div id="error-toast" class="error-toast hidden">
+        <span id="error-toast-icon">⚠️</span>
+        <span id="error-toast-msg"></span>
+        <button id="error-toast-close" onclick="hideToast()">&times;</button>
+    </div>
+
+    <!-- App Device Shell Container -->
+    <div class="app-container" style="min-height: auto; margin: 24px auto;">
+        <div class="screen-content" style="padding: 24px 20px;">
+            <div class="auth-card">
+                <!-- Header -->
+                <div class="auth-header">
+                    <div class="auth-logo">
+                        <svg width="44" height="44" viewBox="0 0 40 40" fill="none">
+                            <circle cx="20" cy="20" r="18" stroke="url(#grad)" stroke-width="3" fill="none" />
+                            <path d="M14 26L20 12L26 26" stroke="url(#grad)" stroke-width="3" stroke-linecap="round"
+                                stroke-linejoin="round" />
+                            <circle cx="20" cy="20" r="3" fill="url(#grad)" />
+                            <defs>
+                                <linearGradient id="grad" x1="0" y1="0" x2="40" y2="40">
+                                    <stop stop-color="#3b82f6" />
+                                    <stop offset="0.5" stop-color="#8b5cf6" />
+                                    <stop offset="1" stop-color="#ec4899" />
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                    </div>
+                    <h1 class="auth-title">Welcome to YatrAI</h1>
+                    <p class="auth-subtitle">Real-time traffic & trip intelligence for Indian roads</p>
+                </div>
+
+                <!-- Tabs -->
+                <div class="auth-tabs">
+                    <button id="tab-login" class="auth-tab-btn active" onclick="switchTab('login')">Sign In</button>
+                    <button id="tab-register" class="auth-tab-btn" onclick="switchTab('register')">Sign Up</button>
+                </div>
+
+                <!-- Local Alert Box -->
+                <div id="auth-alert" class="alert-box"></div>
+
+                <!-- Login Form -->
+                <form id="form-login" class="auth-form" onsubmit="handleLogin(event)">
+                    <div class="input-group">
+                        <label for="login-email">Email Address</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon-left">✉️</span>
+                            <input type="email" id="login-email" placeholder="e.g. name@gmail.com" required
+                                autocomplete="email">
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label for="login-password">Password</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon-left">🔒</span>
+                            <input type="password" id="login-password" placeholder="Enter password" required
+                                autocomplete="current-password">
+                        </div>
+                    </div>
+                    <button type="submit" id="btn-login-submit" class="auth-btn">
+                        <span>Sign In</span>
+                    </button>
+                </form>
+
+                <!-- Register Form -->
+                <form id="form-register" class="auth-form hidden" onsubmit="handleRegister(event)">
+                    <div class="input-group">
+                        <label for="register-name">Full Name</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon-left">👤</span>
+                            <input type="text" id="register-name" placeholder="e.g. Supriya Roy" required
+                                autocomplete="name">
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label for="register-email">Email Address</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon-left">✉️</span>
+                            <input type="email" id="register-email" placeholder="e.g. Roy@gmail.com" required
+                                autocomplete="email">
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label for="register-password">Password</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon-left">🔒</span>
+                            <input type="password" id="register-password" placeholder="Create password (min 6 chars)"
+                                required minlength="6" autocomplete="new-password">
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label for="register-confirm">Confirm Password</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon-left">🔑</span>
+                            <input type="password" id="register-confirm" placeholder="Confirm your password" required
+                                autocomplete="new-password">
+                        </div>
+                    </div>
+                    <button type="submit" id="btn-register-submit" class="auth-btn">
+                        <span>Create Account</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load Firebase Configuration & Init -->
+    <script type="module" src="/frontend/firebase-config.js"></script>
+    <script type="module">
+        const checkAuth = setInterval(async () => {
+            if (window.initFirebaseConfig && !window.firebaseAuth) {
+                await window.initFirebaseConfig();
+            }
+            if (window.firebaseOps && window.firebaseAuth) {
+                clearInterval(checkAuth);
+                const { onAuthStateChanged } = window.firebaseOps;
+                onAuthStateChanged(window.firebaseAuth, (user) => {
+                    if (user) {
+                        window.location.href = '/';
+                    }
+                });
+            }
+        }, 100);
+    </script>
+
+    <script>
+        // Global tab state
+        let activeTab = 'login';
+
+        function switchTab(tab) {
+            activeTab = tab;
+            const tabLogin = document.getElementById('tab-login');
+            const tabRegister = document.getElementById('tab-register');
+            const formLogin = document.getElementById('form-login');
+            const formRegister = document.getElementById('form-register');
+            const alertBox = document.getElementById('auth-alert');
+
+            alertBox.style.display = 'none';
+
+            if (tab === 'login') {
+                tabLogin.classList.add('active');
+                tabRegister.classList.remove('active');
+                formLogin.classList.remove('hidden');
+                formRegister.classList.add('hidden');
+            } else {
+                tabLogin.classList.remove('active');
+                tabRegister.classList.add('active');
+                formLogin.classList.add('hidden');
+                formRegister.classList.remove('hidden');
+            }
+        }
+
+        function showAlert(message) {
+            const alertBox = document.getElementById('auth-alert');
+            alertBox.textContent = message;
+            alertBox.style.display = 'block';
+        }
+
+        // Firebase login/register wrapper
+        async function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value;
+            const submitBtn = document.getElementById('btn-login-submit');
+            const alertBox = document.getElementById('auth-alert');
+
+            alertBox.style.display = 'none';
+            submitBtn.disabled = true;
+            submitBtn.querySelector('span').textContent = 'Signing In...';
+
+            try {
+                if (!window.firebaseOps) {
+                    throw new Error("Firebase SDK is loading, please try again in a moment.");
+                }
+                const { signInWithEmailAndPassword } = window.firebaseOps;
+                await signInWithEmailAndPassword(window.firebaseAuth, email, password);
+
+                // Successful login redirects back to index page
+                window.location.href = '/';
+            } catch (err) {
+                console.error("Login error:", err);
+                let friendlyMsg = err.message;
+                if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+                    friendlyMsg = "Invalid email or password. Please try again.";
+                } else if (err.code === 'auth/invalid-email') {
+                    friendlyMsg = "Invalid email format.";
+                }
+                showAlert(friendlyMsg);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.querySelector('span').textContent = 'Sign In';
+            }
+        }
+
+        async function handleRegister(e) {
+            e.preventDefault();
+            const name = document.getElementById('register-name').value.trim();
+            const email = document.getElementById('register-email').value.trim();
+            const password = document.getElementById('register-password').value;
+            const confirmPassword = document.getElementById('register-confirm').value;
+            const submitBtn = document.getElementById('btn-register-submit');
+            const alertBox = document.getElementById('auth-alert');
+
+            alertBox.style.display = 'none';
+
+            if (password !== confirmPassword) {
+                showAlert("Passwords do not match.");
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.querySelector('span').textContent = 'Creating Account...';
+
+            try {
+                if (!window.firebaseOps) {
+                    throw new Error("Firebase SDK is loading, please try again in a moment.");
+                }
+                const { createUserWithEmailAndPassword, updateProfile, doc, setDoc, serverTimestamp } = window.firebaseOps;
+
+                // Create user
+                const userCredential = await createUserWithEmailAndPassword(window.firebaseAuth, email, password);
+                const user = userCredential.user;
+
+                // Update auth profile display name
+                await updateProfile(user, { displayName: name });
+
+                // Create profile in Firestore /users/{uid}
+                await setDoc(doc(window.firebaseDb, "users", user.uid), {
+                    uid: user.uid,
+                    name: name,
+                    email: email,
+                    createdAt: serverTimestamp()
+                });
+
+                // Success redirects to index
+                window.location.href = '/';
+            } catch (err) {
+                console.error("Registration error:", err);
+                let friendlyMsg = err.message;
+                if (err.code === 'auth/email-already-in-use') {
+                    friendlyMsg = "An account already exists with this email address.";
+                } else if (err.code === 'auth/weak-password') {
+                    friendlyMsg = "The password is too weak. Please use at least 6 characters.";
+                }
+                showAlert(friendlyMsg);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.querySelector('span').textContent = 'Create Account';
+            }
+        }
+
+        // Check if user is already logged in
+        document.addEventListener('DOMContentLoaded', () => {
+            const checkInterval = setInterval(() => {
+                if (window.firebaseOps && window.firebaseAuth) {
+                    clearInterval(checkInterval);
+                    const { onAuthStateChanged } = window.firebaseOps;
+                    onAuthStateChanged(window.firebaseAuth, (user) => {
+                        if (user) {
+                            // User is already logged in, redirect to home page
+                            window.location.href = '/';
+                        }
+                    });
+                }
+            }, 100);
+        });
+
+        // Toast placeholders for styling match
+        function hideToast() {
+            document.getElementById('error-toast').classList.add('hidden');
+        }
+    </script>
+</body>
+
+</html>

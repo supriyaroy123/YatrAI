@@ -33,6 +33,11 @@ from yatrai.travel_time import estimate_travel_time
 from yatrai.drift_detection import log_prediction, get_prediction_stats
 from yatrai.fuel_calculator import calculate_fuel
 from yatrai.sustainability import calculate_sustainability
+from yatrai.apis.gemini import generate_travel_summary
+
+# Simple in-memory prediction cache: key -> (result_dict, timestamp)
+_predict_cache: dict = {}
+_CACHE_TTL_SECONDS = 300  # 5 minutes
 
 
 # App Setup 
@@ -135,6 +140,12 @@ class PredictRequest(BaseModel):
     departure_time: Optional[str] = None
     fuel_mode: str = "average"
     custom_mileage: Optional[float] = None
+    # Optional pre-resolved coordinates from frontend (Google Maps)
+    # When provided, backend skips Nominatim geocoding for a major speed boost
+    origin_lat: Optional[float] = None
+    origin_lon: Optional[float] = None
+    dest_lat: Optional[float] = None
+    dest_lon: Optional[float] = None
 
 
 
@@ -150,6 +161,22 @@ async def serve_frontend():
     if index_path.exists():
         return FileResponse(str(index_path))
     return {"message": "YatrAI API is running. Frontend not found at /frontend/"}
+
+
+@app.get("/login")
+async def serve_login():
+    login_path = FRONTEND_DIR / "login.html"
+    if login_path.exists():
+        return FileResponse(str(login_path))
+    raise HTTPException(status_code=404, detail="Login page not found")
+
+
+@app.get("/history")
+async def serve_history():
+    history_path = FRONTEND_DIR / "history.html"
+    if history_path.exists():
+        return FileResponse(str(history_path))
+    raise HTTPException(status_code=404, detail="History page not found")
 
 
 @app.get("/health")
@@ -186,6 +213,20 @@ async def model_info():
     return info
 
 
+@app.get("/api/config")
+async def get_frontend_config():
+    """Serves the public API keys and Firebase config needed by the frontend."""
+    return {
+        "GOOGLE_MAPS_API_KEY": os.environ.get("GOOGLE_MAPS_API_KEY", ""),
+        "FIREBASE_API_KEY": os.environ.get("FIREBASE_API_KEY", ""),
+        "FIREBASE_AUTH_DOMAIN": os.environ.get("FIREBASE_AUTH_DOMAIN", ""),
+        "FIREBASE_PROJECT_ID": os.environ.get("FIREBASE_PROJECT_ID", ""),
+        "FIREBASE_STORAGE_BUCKET": os.environ.get("FIREBASE_STORAGE_BUCKET", ""),
+        "FIREBASE_MESSAGING_SENDER_ID": os.environ.get("FIREBASE_MESSAGING_SENDER_ID", ""),
+        "FIREBASE_APP_ID": os.environ.get("FIREBASE_APP_ID", ""),
+        "FIREBASE_MEASUREMENT_ID": os.environ.get("FIREBASE_MEASUREMENT_ID", "")
+    }
+
 @app.post("/predict")
 async def predict(request: PredictRequest):
     """Main prediction endpoint — the heart of YatrAI."""
@@ -217,17 +258,49 @@ async def predict(request: PredictRequest):
     errors = []
     
     import asyncio
+    import time as _time
     loop = asyncio.get_running_loop()
 
-    # Step 1: Geocode origin and destination concurrently in separate threads
-    origin_task = loop.run_in_executor(None, geocode, request.origin)
-    dest_task = loop.run_in_executor(None, geocode, request.destination)
-    origin_geo, dest_geo = await asyncio.gather(origin_task, dest_task)
+    # In-memory cache lookup
+    cache_key = (
+        request.origin.strip().lower(),
+        request.destination.strip().lower(),
+        departure_hour,
+        request.vehicle_type,
+    )
+    cached = _predict_cache.get(cache_key)
+    if cached:
+        result_dict, cached_at = cached
+        if _time.monotonic() - cached_at < _CACHE_TTL_SECONDS:
+            return result_dict
 
-    if not origin_geo:
-        raise HTTPException(status_code=400, detail=f"Could not find location: {request.origin}")
-    if not dest_geo:
-        raise HTTPException(status_code=400, detail=f"Could not find location: {request.destination}")
+    # Step 1: Geocode origin and destination
+    # Fast path: use pre-resolved coordinates from frontend (Google Maps Geocoder)
+    # This skips the slow Nominatim API call entirely
+    if (
+        request.origin_lat is not None and request.origin_lon is not None
+        and request.dest_lat is not None and request.dest_lon is not None
+    ):
+        origin_geo = {
+            "lat": request.origin_lat,
+            "lon": request.origin_lon,
+            "display_name": request.origin,
+        }
+        dest_geo = {
+            "lat": request.dest_lat,
+            "lon": request.dest_lon,
+            "display_name": request.destination,
+        }
+    else:
+        # Fallback: geocode via Nominatim (slower, only if no coords given)
+        origin_task = loop.run_in_executor(None, geocode, request.origin)
+        dest_task = loop.run_in_executor(None, geocode, request.destination)
+        origin_geo, dest_geo = await asyncio.gather(origin_task, dest_task)
+
+        if not origin_geo:
+            raise HTTPException(status_code=400, detail=f"Could not find location: {request.origin}")
+        if not dest_geo:
+            raise HTTPException(status_code=400, detail=f"Could not find location: {request.destination}")
     
     origin_coords = (origin_geo["lat"], origin_geo["lon"])
     dest_coords = (dest_geo["lat"], dest_geo["lon"])
@@ -371,31 +444,16 @@ async def predict(request: PredictRequest):
         mileage_used=fuel_result["mileage_used"],
     )
 
-    # Step 7.5: Generate AI Travel Summary using Gemini
-    from yatrai.apis.gemini import generate_travel_summary
-    ai_summary = await loop.run_in_executor(
-        None,
-        generate_travel_summary,
-        request.origin,
-        request.destination,
-        request.vehicle_type,
-        congestion_result["level"],
-        congestion_result.get("confidence", 0.5),
-        travel_result["eta_minutes"],
-        accident_result["level"],
-        aqi_data.get("aqi", -1),
-        weather_data.get("temp_c", 30.0),
-        weather_data.get("rain_mm", 0.0),
-        weather_data.get("visibility_km", 10.0),
-        formatted_departure,
-        fuel_result["fuel_needed_liters"],
-        fuel_result["fuel_cost_rupees"],
-        fuel_result["traffic_impact_percent"],
-        sustainability_result["co2_emission_kg"],
-    )
-    
-    # Inject AI sustainability insight
-    sustainability_result["sustainability_insight"] = ai_summary.get("sustainability_insight", "")
+    # Step 7.5: Set placeholders for AI Travel Summary (handled asynchronously on frontend)
+    ai_summary = {
+        "summary": "Generating AI travel summary...",
+        "travel_recommendation": "Analyzing optimal route conditions...",
+        "safety_recommendation": "Checking safety factors...",
+        "weather_alert": "",
+        "fuel_insight": "Assessing congestion fuel impact...",
+        "sustainability_insight": "Analyzing carbon offset..."
+    }
+    sustainability_result["sustainability_insight"] = "Analyzing carbon offset..."
 
     # Step 8: Build response
     response = {
@@ -431,7 +489,17 @@ async def predict(request: PredictRequest):
     
     if errors:
         response["warnings"] = errors
-    
+
+    # Cache the result
+    import time as _time2
+    _predict_cache[cache_key] = (response, _time2.monotonic())
+    # Evict stale cache entries occasionally (keep dict lean)
+    if len(_predict_cache) > 200:
+        cutoff = _time2.monotonic() - _CACHE_TTL_SECONDS
+        stale = [k for k, (_, ts) in _predict_cache.items() if ts < cutoff]
+        for k in stale:
+            _predict_cache.pop(k, None)
+
     # Step 9: Log prediction
     try:
         log_prediction({
@@ -450,6 +518,69 @@ async def predict(request: PredictRequest):
         pass  # Don't fail prediction if logging fails
     
     return response
+
+
+class InsightsRequest(BaseModel):
+    origin: str
+    destination: str
+    vehicle_type: str = "Car"
+    congestion_level: str = "Moderate"
+    confidence: float = 0.5
+    eta_minutes: float = 60.0
+    accident_risk: str = "Low"
+    aqi: int = -1
+    temp_c: float = 30.0
+    rain_mm: float = 0.0
+    visibility_km: float = 10.0
+    departure_time: Optional[str] = None
+    fuel_needed_liters: float = 0.0
+    fuel_cost_rupees: float = 0.0
+    traffic_impact_percent: float = 0.0
+    co2_emission_kg: float = 0.0
+
+
+@app.post("/predict/insights")
+async def predict_insights(request: InsightsRequest):
+    """
+    Async endpoint for AI-generated travel insights via Gemini.
+    Call this AFTER /predict returns so the main result loads instantly.
+    """
+    import asyncio
+    loop = asyncio.get_running_loop()
+    try:
+        ai_summary = await asyncio.wait_for(
+            loop.run_in_executor(
+                None,
+                generate_travel_summary,
+                request.origin,
+                request.destination,
+                request.vehicle_type,
+                request.congestion_level,
+                request.confidence,
+                request.eta_minutes,
+                request.accident_risk,
+                request.aqi,
+                request.temp_c,
+                request.rain_mm,
+                request.visibility_km,
+                request.departure_time or "Now",
+                request.fuel_needed_liters,
+                request.fuel_cost_rupees,
+                request.traffic_impact_percent,
+                request.co2_emission_kg,
+            ),
+            timeout=10.0
+        )
+    except asyncio.TimeoutError:
+        ai_summary = {
+            "summary": "AI summary unavailable — connection timed out.",
+            "travel_recommendation": "Check live traffic before departure.",
+            "safety_recommendation": "Drive safely and follow traffic rules.",
+            "weather_alert": "",
+            "fuel_insight": "Plan fuel stops ahead on long routes.",
+            "sustainability_insight": "Consider carpooling or public transit for eco-friendly travel."
+        }
+    return ai_summary
 
 
 @app.get("/aqi/{city}")

@@ -25,7 +25,7 @@ def _load_env():
                         continue
                     if "=" in line:
                         k, v = line.split("=", 1)
-                        os.environ[k.strip()] = v.strip()
+                        os.environ[k.strip()] = v.strip().strip('"').strip("'")
         except Exception as e:
             print(f"[config] Warning: Failed to load .env file: {e}")
 
@@ -57,21 +57,21 @@ NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 NOMINATIM_USER_AGENT = "YatrAI/1.0 (traffic-intelligence-system)"
 
 # OpenCage (Paid / Free tier geocoding, needs key)
-GEOCODING_API_KEY = os.environ.get("GEOCODING_API_KEY", "0503af2aa0784d99bd00e550185065e6")
+GEOCODING_API_KEY = os.environ.get("GEOCODING_API_KEY", "")
 OPENCAGE_URL = "https://api.opencagedata.com/geocode/v1/json"
 
 # OSRM (Open Source Routing Machine) - Free, no key needed
 OSRM_URL = "https://router.project-osrm.org/route/v1/driving"
 
 # OpenRouteService (OSM-based routing, needs key)
-ROUTING_API_KEY = os.environ.get("ROUTING_API_KEY", "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjQxMDEyYWIxYjQ4MDQ4Y2ZiNDM4ZWFmYTFiNWY1ODU4IiwiaCI6Im11cm11cjY0In0=")
+ROUTING_API_KEY = os.environ.get("ROUTING_API_KEY", "")
 OPENROUTESERVICE_URL = "https://api.openrouteservice.org/v2/directions/driving-car/geojson"
 
 # Open-Meteo - Free, no key needed
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 
 # OpenWeatherMap - Free / Paid weather, needs key
-WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY", "REMOVED_KEY")
+WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY", "")
 OPENWEATHERMAP_URL = "https://api.openweathermap.org/data/2.5/weather"
 
 # WAQI (World Air Quality Index) - Free, needs token
@@ -80,7 +80,7 @@ WAQI_URL = "https://api.waqi.info/feed/geo"
 
 #  API Rate Limiting
 NOMINATIM_DELAY = 1.0   # 1 request per second (Nominatim policy)
-API_TIMEOUT = 10         # seconds
+API_TIMEOUT = 6          # seconds (fail fast, fall back to next provider)
 
 # Congestion Model Features
 # Features used from the VANET dataset for training
