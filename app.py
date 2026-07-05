@@ -155,7 +155,7 @@ class AQIRequest(BaseModel):
 
 
 #  Endpoints 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 async def serve_frontend():
     index_path = FRONTEND_DIR / "index.html"
     if index_path.exists():
