@@ -66,7 +66,6 @@ def get_weather(lat: float, lon: float) -> dict:
     params = {
         "latitude": lat,
         "longitude": lon,
-        "current_weather": "true",
         "current": "temperature_2m,relative_humidity_2m,rain,visibility,wind_speed_10m",
     }
 
