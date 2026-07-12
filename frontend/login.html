@@ -125,8 +125,31 @@
             z-index: 1;
         }
 
+        input[type="password"]::-ms-reveal,
+        input[type="password"]::-ms-clear {
+            display: none;
+        }
+
+        .input-icon-right {
+            position: absolute;
+            right: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            cursor: pointer;
+            z-index: 2;
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+
+        .input-icon-right:hover {
+            opacity: 1;
+        }
+
         .input-wrapper input {
             padding-left: 42px;
+            padding-right: 42px;
         }
 
         .alert-box {
@@ -140,8 +163,22 @@
             display: none;
         }
 
-        /* Radar Background Styles */
-        .radar-bg {
+        /* Background Image Styles */
+        .image-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -2;
+            background-image: url('/frontend/bg-image.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        /* Animated Orbs Overlay */
+        .orbs-bg {
             position: fixed;
             top: 0;
             left: 0;
@@ -152,70 +189,64 @@
             pointer-events: none;
         }
 
-        .radar-grid-svg {
+        .orb {
             position: absolute;
-            top: 30%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 200vmax;
-            height: 200vmax;
-        }
-
-        .radar-sweep {
-            position: absolute;
-            top: 30%;
-            left: 50%;
-            width: 200vmax;
-            height: 200vmax;
-            margin-top: -100vmax;
-            margin-left: -100vmax;
             border-radius: 50%;
-            background: conic-gradient(from 0deg, rgba(59, 130, 246, 0) 0deg, rgba(59, 130, 246, 0) 300deg, rgba(59, 130, 246, 0.35) 360deg);
-            transform-origin: center center;
-            animation: radar-spin 5s linear infinite;
+            background: radial-gradient(circle at 30% 30%, rgba(216, 180, 254, 0.8), rgba(147, 197, 253, 0.5) 60%, transparent 80%);
+            box-shadow: inset -10px -10px 20px rgba(139, 92, 246, 0.15), inset 10px 10px 20px rgba(255, 255, 255, 0.9);
+            animation: float-orb infinite ease-in-out alternate;
         }
 
-        @keyframes radar-spin {
-            from {
-                transform: rotate(0deg);
-            }
+        @keyframes float-orb {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(20px, -40px) scale(1.05); }
+        }
 
-            to {
-                transform: rotate(360deg);
-            }
+        /* Orb 1: Large, top left */
+        .orb:nth-child(1) { width: 120px; height: 120px; top: 10%; left: 15%; opacity: 0.8; animation-duration: 12s; animation-delay: 0s; }
+        /* Orb 2: Medium, bottom left */
+        .orb:nth-child(2) { width: 80px; height: 80px; bottom: 15%; left: 10%; opacity: 0.7; animation-duration: 15s; animation-delay: -3s; }
+        /* Orb 3: Small, far back top center */
+        .orb:nth-child(3) { width: 40px; height: 40px; top: 15%; left: 50%; opacity: 0.5; filter: blur(2px); animation-duration: 9s; animation-delay: -5s; }
+        /* Orb 4: Medium-large, top right */
+        .orb:nth-child(4) { width: 100px; height: 100px; top: 20%; right: 15%; opacity: 0.85; animation-duration: 18s; animation-delay: -2s; }
+        /* Orb 5: Small, far back mid right */
+        .orb:nth-child(5) { width: 50px; height: 50px; top: 45%; right: 10%; opacity: 0.6; filter: blur(1.5px); animation-duration: 14s; animation-delay: -7s; }
+        /* Orb 6: Large, bottom right */
+        .orb:nth-child(6) { width: 110px; height: 110px; bottom: 10%; right: 20%; opacity: 0.75; animation-duration: 20s; animation-delay: -10s; }
+        /* Orb 7: Small, bottom center */
+        .orb:nth-child(7) { width: 35px; height: 35px; bottom: 10%; left: 45%; opacity: 0.5; filter: blur(1px); animation-duration: 11s; animation-delay: -1s; }
+        /* Orb 8: Medium, mid left */
+        .orb:nth-child(8) { width: 70px; height: 70px; top: 50%; left: 5%; opacity: 0.65; animation-duration: 16s; animation-delay: -8s; }
+
+        @media (max-width: 480px) {
+            .orb:nth-child(1) { width: 80px; height: 80px; top: 5%; left: 5%; }
+            .orb:nth-child(2) { width: 60px; height: 60px; bottom: 10%; left: 5%; }
+            .orb:nth-child(4) { width: 70px; height: 70px; top: 15%; right: 5%; }
+            .orb:nth-child(6) { width: 75px; height: 75px; bottom: 15%; right: 5%; }
+            .orb:nth-child(5), .orb:nth-child(7), .orb:nth-child(8) { display: none; }
         }
 
         @media (prefers-reduced-motion: reduce) {
-            .radar-sweep {
-                animation-play-state: paused;
-                opacity: 0.2;
-            }
+            .orb { animation: none; }
         }
     </style>
 </head>
 
 <body>
-    <!-- Animated Radar Background -->
-    <div class="radar-bg">
-        <svg class="radar-grid-svg" viewBox="0 0 2000 2000" overflow="visible" xmlns="http://www.w3.org/2000/svg">
-            <g stroke="rgba(59, 130, 246, 0.18)" stroke-width="2" fill="none">
-                <!-- Concentric circles -->
-                <circle cx="1000" cy="1000" r="200" />
-                <circle cx="1000" cy="1000" r="400" />
-                <circle cx="1000" cy="1000" r="600" />
-                <circle cx="1000" cy="1000" r="800" />
-                <circle cx="1000" cy="1000" r="1000" />
-                <circle cx="1000" cy="1000" r="1200" />
-                <circle cx="1000" cy="1000" r="1400" />
-                <!-- Crosshairs -->
-                <line x1="1000" y1="-500" x2="1000" y2="2500" />
-                <line x1="-500" y1="1000" x2="2500" y2="1000" />
-                <!-- Diagonals -->
-                <line x1="-60" y1="-60" x2="2060" y2="2060" />
-                <line x1="2060" y1="-60" x2="-60" y2="2060" />
-            </g>
-        </svg>
-        <div class="radar-sweep"></div>
+    <!-- Background Image -->
+    <div class="image-bg"></div>
+
+    <!-- Animated Orbs Overlay -->
+    <div class="orbs-bg">
+        <div class="orb"></div>
+        <div class="orb"></div>
+        <div class="orb"></div>
+        <div class="orb"></div>
+        <div class="orb"></div>
+        <div class="orb"></div>
+        <div class="orb"></div>
+        <div class="orb"></div>
     </div>
 
     <!-- Error Toast -->
@@ -275,6 +306,9 @@
                             <span class="input-icon-left">🔒</span>
                             <input type="password" id="login-password" placeholder="Enter password" required
                                 autocomplete="current-password">
+                            <span class="input-icon-right toggle-password"
+                                onclick="togglePasswordVisibility(this, 'login-password')"
+                                title="Show Password">👁️</span>
                         </div>
                     </div>
                     <button type="submit" id="btn-login-submit" class="auth-btn">
@@ -306,6 +340,9 @@
                             <span class="input-icon-left">🔒</span>
                             <input type="password" id="register-password" placeholder="Create password (min 6 chars)"
                                 required minlength="6" autocomplete="new-password">
+                            <span class="input-icon-right toggle-password"
+                                onclick="togglePasswordVisibility(this, 'register-password')"
+                                title="Show Password">👁️</span>
                         </div>
                     </div>
                     <div class="input-group">
@@ -314,6 +351,9 @@
                             <span class="input-icon-left">🔑</span>
                             <input type="password" id="register-confirm" placeholder="Confirm your password" required
                                 autocomplete="new-password">
+                            <span class="input-icon-right toggle-password"
+                                onclick="togglePasswordVisibility(this, 'register-confirm')"
+                                title="Show Password">👁️</span>
                         </div>
                     </div>
                     <button type="submit" id="btn-register-submit" class="auth-btn">
@@ -374,6 +414,19 @@
             const alertBox = document.getElementById('auth-alert');
             alertBox.textContent = message;
             alertBox.style.display = 'block';
+        }
+
+        function togglePasswordVisibility(icon, inputId) {
+            const input = document.getElementById(inputId);
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.textContent = '🙈';
+                icon.title = 'Hide Password';
+            } else {
+                input.type = 'password';
+                icon.textContent = '👁️';
+                icon.title = 'Show Password';
+            }
         }
 
         // Firebase login/register wrapper
