@@ -52,12 +52,12 @@ def get_weather(lat: float, lon: float) -> dict:
             rain_mm = rain.get("1h", rain.get("3h", defaults["rain_mm"]))
             
             return {
-                "temp_c": main.get("temp", defaults["temp_c"]),
-                "rain_mm": rain_mm,
+                "temp_c": round(main.get("temp", defaults["temp_c"]), 2),
+                "rain_mm": round(rain_mm, 2),
                 # OWM returns visibility in metres; convert to km
-                "visibility_km": data.get("visibility", defaults["visibility_km"] * 1000) / 1000,
-                "wind_speed_kmh": wind_speed,
-                "humidity": main.get("humidity", defaults["humidity"]),
+                "visibility_km": round(data.get("visibility", defaults["visibility_km"] * 1000) / 1000, 2),
+                "wind_speed_kmh": round(wind_speed, 2),
+                "humidity": round(main.get("humidity", defaults["humidity"]), 2),
             }
         except Exception as e:
             print(f"[OpenWeatherMap] Error: {e}. Falling back to Open-Meteo...")
@@ -76,19 +76,12 @@ def get_weather(lat: float, lon: float) -> dict:
         current = data.get("current", {})
 
         return {
-            "temp_c": current.get("temperature_2m", defaults["temp_c"]),
-            "rain_mm": current.get("rain", defaults["rain_mm"]),
+            "temp_c": round(current.get("temperature_2m", defaults["temp_c"]), 2),
+            "rain_mm": round(current.get("rain", defaults["rain_mm"]), 2),
             # Open-Meteo returns visibility in metres; convert to km
-            "visibility_km": current.get(
-                "visibility", defaults["visibility_km"] * 1000
-            )
-            / 1000,
-            "wind_speed_kmh": current.get(
-                "wind_speed_10m", defaults["wind_speed_kmh"]
-            ),
-            "humidity": current.get(
-                "relative_humidity_2m", defaults["humidity"]
-            ),
+            "visibility_km": round(current.get("visibility", defaults["visibility_km"] * 1000) / 1000, 2),
+            "wind_speed_kmh": round(current.get("wind_speed_10m", defaults["wind_speed_kmh"]), 2),
+            "humidity": round(current.get("relative_humidity_2m", defaults["humidity"]), 2),
         }
     except Exception as e:
         print(f"[Open-Meteo] Error: {e}, using defaults")
