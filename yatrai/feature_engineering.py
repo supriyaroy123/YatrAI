@@ -30,7 +30,7 @@ from yatrai.config import (
 )
 
 
-# ── Congestion Feature Builder ────────────────────────────────────────
+# Congestion Feature Builder 
 
 def build_congestion_features(
     route_data: dict,
@@ -56,7 +56,7 @@ def build_congestion_features(
 
     features = {}
 
-    # ── 1. TRAFFIC FEATURES ──────────────────────────────────────────
+    # 1. TRAFFIC FEATURES 
 
     distance_km = route_data.get("distance_km", 10.0)
     duration_min = route_data.get("duration_min", 15.0)
@@ -98,24 +98,24 @@ def build_congestion_features(
     # Steady-state assumption — small random acceleration
     features["avg_accel_ms2"] = random.uniform(-0.5, 0.5)
 
-    # ── 2. SIGNAL FEATURES ───────────────────────────────────────────
+    # 2. SIGNAL FEATURES 
 
     features["heading_deg"] = random.uniform(0, 360)   # not meaningful
     features["signal_state_num"] = 1.0                  # default: green
     features["incident_num"] = 0.0                      # no incident
 
-    # ── 3. WEATHER FEATURES (direct from API) ────────────────────────
+    # 3. WEATHER FEATURES (direct from API) 
 
     features["temp_c"] = weather_data.get("temp_c", 30.0)
     features["visibility_km"] = weather_data.get("visibility_km", 10.0)
     features["rain_intensity_mmph"] = weather_data.get("rain_mm", 0.0)
 
-    # ── 4. V2X FEATURES → imputed with training medians ──────────────
+    # 4. V2X FEATURES → imputed with training medians
 
     for feat in CONGESTION_V2X_FEATURES:
         features[feat] = training_medians.get(feat, 0.0)
 
-    # ── 5. DERIVED FEATURES (recalculated from above) ────────────────
+    # 5. DERIVED FEATURES (recalculated from above)
 
     features["speed_density_ratio"] = (
         features["avg_speed_kmph"] / (features["density_veh_per_km"] + 1e-6)
@@ -152,13 +152,13 @@ def build_congestion_features(
         * (1.0 + abs(temp - 25.0) / 50.0)
     )
 
-    # ── Build DataFrame in exact column order ────────────────────────
+    # Build DataFrame in exact column order 
     df = pd.DataFrame([features])
     df = df[CONGESTION_ALL_FEATURES]
     return df
 
 
-# ── Accident Feature Builder ─────────────────────────────────────────
+# Accident Feature Builder 
 
 def build_accident_features(
     weather_data: dict,
@@ -183,7 +183,7 @@ def build_accident_features(
     now = datetime.now()
     features = {}
 
-    # ── Weather features (unit conversions) ──────────────────────────
+    # Weather features (unit conversions) 
     temp_c = weather_data.get("temp_c", 30.0)
     features["Temperature(F)"] = temp_c * 9.0 / 5.0 + 32.0
 
@@ -204,7 +204,7 @@ def build_accident_features(
     rain_mm = weather_data.get("rain_mm", 0.0)
     features["Precipitation(in)"] = rain_mm * 0.0393701
 
-    # ── Road features (default to False — unknown) ───────────────────
+    # Road features (default to False — unknown)
     road_features = [
         "Crossing", "Junction", "Traffic_Signal", "Amenity",
         "Bump", "Give_Way", "No_Exit", "Roundabout",
@@ -213,7 +213,7 @@ def build_accident_features(
     for feat in road_features:
         features[feat] = 0
 
-    # ── Time features ────────────────────────────────────────────────
+    #  Time features 
     features["hour"] = hour
     features["day_of_week"] = now.weekday()  # 0=Mon .. 6=Sun
     features["is_weekend"] = 1 if now.weekday() >= 5 else 0
@@ -222,14 +222,14 @@ def build_accident_features(
         s <= hour <= e for s, e in [(7, 10), (17, 20)]
     ) else 0
 
-    # ── Location features ────────────────────────────────────────────
+    # Location features 
     features["Start_Lat"] = origin_coords[0] if origin_coords else 28.6139
     features["Start_Lng"] = origin_coords[1] if origin_coords else 77.2090
 
-    # ── Sunrise/Sunset derived ───────────────────────────────────────
+    # Sunrise/Sunset derived 
     features["Sunrise_Sunset_Night"] = features["is_night"]
 
-    # ── Build DataFrame in exact column order ────────────────────────
+    # Build DataFrame in exact column order
     df = pd.DataFrame([features])
     df = df[ACCIDENT_ALL_FEATURES]
     return df

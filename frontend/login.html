@@ -139,12 +139,84 @@
             line-height: 1.4;
             display: none;
         }
+
+        /* Radar Background Styles */
+        .radar-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -1;
+            overflow: hidden;
+            pointer-events: none;
+        }
+
+        .radar-grid-svg {
+            position: absolute;
+            top: 30%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 200vmax;
+            height: 200vmax;
+        }
+
+        .radar-sweep {
+            position: absolute;
+            top: 30%;
+            left: 50%;
+            width: 200vmax;
+            height: 200vmax;
+            margin-top: -100vmax;
+            margin-left: -100vmax;
+            border-radius: 50%;
+            background: conic-gradient(from 0deg, rgba(59, 130, 246, 0) 0deg, rgba(59, 130, 246, 0) 300deg, rgba(59, 130, 246, 0.35) 360deg);
+            transform-origin: center center;
+            animation: radar-spin 5s linear infinite;
+        }
+
+        @keyframes radar-spin {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .radar-sweep {
+                animation-play-state: paused;
+                opacity: 0.2;
+            }
+        }
     </style>
 </head>
 
 <body>
-    <!-- Animated Background Grid -->
-    <div class="bg-grid"></div>
+    <!-- Animated Radar Background -->
+    <div class="radar-bg">
+        <svg class="radar-grid-svg" viewBox="0 0 2000 2000" overflow="visible" xmlns="http://www.w3.org/2000/svg">
+            <g stroke="rgba(59, 130, 246, 0.18)" stroke-width="2" fill="none">
+                <!-- Concentric circles -->
+                <circle cx="1000" cy="1000" r="200" />
+                <circle cx="1000" cy="1000" r="400" />
+                <circle cx="1000" cy="1000" r="600" />
+                <circle cx="1000" cy="1000" r="800" />
+                <circle cx="1000" cy="1000" r="1000" />
+                <circle cx="1000" cy="1000" r="1200" />
+                <circle cx="1000" cy="1000" r="1400" />
+                <!-- Crosshairs -->
+                <line x1="1000" y1="-500" x2="1000" y2="2500" />
+                <line x1="-500" y1="1000" x2="2500" y2="1000" />
+                <!-- Diagonals -->
+                <line x1="-60" y1="-60" x2="2060" y2="2060" />
+                <line x1="2060" y1="-60" x2="-60" y2="2060" />
+            </g>
+        </svg>
+        <div class="radar-sweep"></div>
+    </div>
 
     <!-- Error Toast -->
     <div id="error-toast" class="error-toast hidden">

@@ -63,9 +63,9 @@ This runs Optuna hyperparameter search (100 trials) on the VANET dataset.
 python app.py
 ```
 
-Open **http://localhost:8000** in your browser.
+Open **https://yatrai-9otz.onrender.com/** in Your browser.
 
-### 4. (Optional) Train Accident Model
+### 4. Train Accident Model
 
 Download the [US Accidents dataset](https://www.kaggle.com/datasets/sobhanmoosavi/us-accidents) from Kaggle, place `US_Accidents_March23.csv` in the parent directory, and re-run `python train.py`.
 

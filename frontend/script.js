@@ -1129,7 +1129,7 @@ function updateWeather(weather) {
         <div class="weather-item">
             <span class="weather-item-icon">💨</span>
             <div>
-                <div class="weather-item-value">${weather.wind_speed_kmh} km/h</div>
+                <div class="weather-item-value">${Number(weather.wind_speed_kmh).toFixed(2)} km/h</div>
                 <div class="weather-item-label">Wind Speed</div>
             </div>
         </div>
