@@ -555,7 +555,9 @@ async def predict(request: PredictRequest, background_tasks: BackgroundTasks):
                 coords = [c for segment in geom_coords for c in segment]
                 
             if coords:
-                background_tasks.add_task(pre_warm_poi_cache_sync, coords)
+                # Disabled for free tier: pre-warming causes PyTorch to load and spike memory > 512MB
+                # background_tasks.add_task(pre_warm_poi_cache_sync, coords)
+                pass
     except Exception as e:
         print(f"Error scheduling POI cache pre-warm: {e}")
     
