@@ -350,6 +350,7 @@
                 <button class="tab-nav-btn active" data-tab="overview">Overview</button>
                 <button class="tab-nav-btn" data-tab="cost-eco">Cost & eco</button>
                 <button class="tab-nav-btn" data-tab="ai-insights">AI insights</button>
+                <button class="tab-nav-btn" data-tab="poi-search" id="tab-btn-poi">Explore route</button>
                 <div class="active-tab-line"></div>
             </div>
 
@@ -603,7 +604,92 @@
                     </div>
                 </div>
 
+                <!-- Tab Panel 4: Explore Route (POI Chatbot) -->
+                <div id="tab-poi-search" class="tab-panel-content hidden">
+
+                    <!-- Chat input + quick chips -->
+                    <div class="poi-chat-panel">
+                        <p class="poi-intro-text">Search for places along your route using natural language.</p>
+
+                        <!-- Quick suggestion chips -->
+                        <div class="poi-quick-chips" id="poi-chips">
+                            <button class="poi-chip" data-query="petrol pump" id="chip-petrol">
+                                ⛽ Petrol Pump
+                            </button>
+                            <button class="poi-chip" data-query="restaurant" id="chip-restaurant">
+                                🍽️ Restaurant
+                            </button>
+                            <button class="poi-chip" data-query="hotel" id="chip-hotel">
+                                🏨 Hotel
+                            </button>
+                            <button class="poi-chip" data-query="hospital" id="chip-hospital">
+                                🏥 Hospital
+                            </button>
+                            <button class="poi-chip" data-query="atm" id="chip-atm">
+                                🏧 ATM
+                            </button>
+                            <button class="poi-chip" data-query="pharmacy" id="chip-pharmacy">
+                                💊 Pharmacy
+                            </button>
+                            <button class="poi-chip" data-query="cafe" id="chip-cafe">
+                                ☕ Café
+                            </button>
+                            <button class="poi-chip" data-query="parking" id="chip-parking">
+                                🅿️ Parking
+                            </button>
+                        </div>
+
+                        <!-- Text search bar -->
+                        <div class="poi-input-row">
+                            <input
+                                type="text"
+                                id="poi-query-input"
+                                class="poi-input"
+                                placeholder="e.g. quiet vegetarian restaurant…"
+                                autocomplete="off"
+                                maxlength="120"
+                            />
+                            <button class="poi-send-btn" id="poi-send-btn" onclick="handlePOIQuery()" title="Search">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Loading stages (shown during Overpass fetch) -->
+                    <div class="poi-loading" id="poi-loading" style="display:none;">
+                        <div class="poi-loading-spinner"></div>
+                        <div class="poi-loading-stages">
+                            <span class="poi-stage" id="poi-stage-1">📍 Sampling route points…</span>
+                            <span class="poi-stage dim" id="poi-stage-2">🗺️ Querying OpenStreetMap…</span>
+                            <span class="poi-stage dim" id="poi-stage-3">🤖 Ranking results…</span>
+                        </div>
+                    </div>
+
+                    <!-- Results list -->
+                    <div class="poi-results-list" id="poi-results-list" style="display:none;">
+                        <!-- Populated dynamically by renderPOIResults() -->
+                    </div>
+
+                    <!-- Empty state -->
+                    <div class="poi-empty-state" id="poi-empty-state" style="display:none;">
+                        <span class="poi-empty-icon">🔍</span>
+                        <p class="poi-empty-title">No results found nearby</p>
+                        <p class="poi-empty-sub" id="poi-empty-msg">This area may have limited map coverage. Try a broader category or a different route.</p>
+                    </div>
+
+                    <!-- Results header (count + cache badge) -->
+                    <div class="poi-results-header" id="poi-results-header" style="display:none;">
+                        <span id="poi-result-count"></span>
+                        <span class="poi-cache-badge" id="poi-cache-badge" style="display:none;">⚡ Instant (cached)</span>
+                    </div>
+
+                </div>
+
             </div>
+
             
             <!-- App Device Shell Footer -->
             <footer id="app-footer">

@@ -22,6 +22,11 @@ let selectedVehicle = 'Car';
 let lastPredictionData = null;     // cache to re-predict on vehicle change
 let hasPredicted = false;          // track if user has predicted at least once
 
+// ── POI Chatbot State ────────────────────────────────────────
+let currentRouteGeometry = null;   // GeoJSON geometry from /predict, sent to /poi-search
+let poiMarkers = [];               // Google Maps markers for POI results
+
+
 // ── DOM References ───────────────────────────────────────────────
 const originInput = document.getElementById('loc-start');
 const destInput = document.getElementById('loc-end');
@@ -49,7 +54,9 @@ document.addEventListener('DOMContentLoaded', () => {
     initDepartureTime();
     initAutoPredictOnChanges();
     initResultsNavigation();
+    initPOISearch();   // initialise the Explore Route tab
 });
+
 
 // ── Theme Toggle (Dark / Light) ──────────────────────────────────
 function initTheme() {
@@ -499,6 +506,12 @@ async function handlePredict() {
         updateMap(data);
         updateExplanation(data);
         updateWeather(data.weather);
+
+        // Store route geometry for POI search (used by the Explore Route tab)
+        currentRouteGeometry = data.route.geometry || null;
+        // Reset POI UI whenever a new route is planned
+        resetPOIPanel();
+
 
         // Save prediction history to Firestore
         try {
@@ -1197,4 +1210,533 @@ function showToast(message) {
 
 function hideToast() {
     errorToast.classList.add('hidden');
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   POI Chatbot — "Explore Route" Tab Logic
+   ═══════════════════════════════════════════════════════════════ */
+
+/**
+ * initPOISearch — wires up chip clicks, Enter key on input,
+ * and tab-switch clear behaviour.
+ */
+function initPOISearch() {
+    // Wire up each quick-select chip
+    const chips = document.querySelectorAll('.poi-chip');
+    chips.forEach(chip => {
+        chip.addEventListener('click', () => {
+            const query = chip.dataset.query;
+            // Highlight the tapped chip
+            chips.forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            // Populate the text input with the chip label
+            const input = document.getElementById('poi-query-input');
+            if (input) input.value = query;
+            handlePOIQuery(query);
+        });
+    });
+
+    // Submit on Enter key inside the text input
+    const input = document.getElementById('poi-query-input');
+    if (input) {
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Enter') handlePOIQuery();
+        });
+        // Clear chip active state when user types manually
+        input.addEventListener('input', () => {
+            document.querySelectorAll('.poi-chip').forEach(c => c.classList.remove('active'));
+        });
+    }
+}
+
+/**
+ * handlePOIQuery — the main POI search trigger.
+ * Called by chip clicks, send button, or Enter key.
+ *
+ * Flow:
+ *  1. Validate that a route exists
+ *  2. Show animated loading stages
+ *  3. POST /poi-search with route geometry + query
+ *  4. Render result cards + Google Maps markers
+ */
+window.handlePOIQuery = async function(query) {
+    const input = document.getElementById('poi-query-input');
+    const q = (query || (input && input.value) || '').trim();
+
+    if (!q) {
+        showToast('Please enter a search term or tap a category chip.');
+        return;
+    }
+
+    // Guard: must have planned a route first
+    if (!currentRouteGeometry || !window._originLat || !window._originLng) {
+        showToast('Plan a route first, then search for places along it.');
+        return;
+    }
+
+    // Show loading panel, hide previous results/empty state
+    _setPOIUIState('loading');
+    _animatePOIStages();
+
+    try {
+        const res = await fetch('/poi-search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                route_geometry: currentRouteGeometry,
+                origin_lat: window._originLat,
+                origin_lon: window._originLng,
+                query: q,
+                radius_km: 2.0,
+            }),
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || `Server error ${res.status}`);
+        }
+
+        const data = await res.json();
+
+        // Fix 1: Handle "prompt" response — user typed a location but no category
+        if (data.prompt) {
+            const msgEl = document.getElementById('poi-empty-msg');
+            if (msgEl) msgEl.textContent = data.message || 'Please specify what you are looking for.';
+            _setPOIUIState('empty');
+            return;
+        }
+
+        if (!data.pois || data.pois.length === 0) {
+            // Show empty state with server-provided message
+            const msgEl = document.getElementById('poi-empty-msg');
+            if (msgEl && data.message) msgEl.textContent = data.message;
+            _setPOIUIState('empty');
+            return;
+        }
+
+
+        renderPOIResults(data);
+        plotPOIMarkers(data.pois);
+
+    } catch (err) {
+        _setPOIUIState('hidden');
+        showToast(err.message || 'POI search failed. Please try again.');
+    }
+};
+
+/** Controls which POI UI panel is visible */
+function _setPOIUIState(state) {
+    const loading  = document.getElementById('poi-loading');
+    const results  = document.getElementById('poi-results-list');
+    const empty    = document.getElementById('poi-empty-state');
+    const header   = document.getElementById('poi-results-header');
+
+    loading.style.display = 'none';
+    results.style.display  = 'none';
+    empty.style.display    = 'none';
+    header.style.display   = 'none';
+
+    if (state === 'loading') loading.style.display = 'flex';
+    if (state === 'empty')   empty.style.display   = 'flex';
+    if (state === 'results') {
+        results.style.display = 'flex';
+        header.style.display  = 'flex';
+    }
+}
+
+/**
+ * Animates the 3-stage loading text while the request is in-flight.
+ * Stages illuminate in sequence to give feedback on long Overpass waits.
+ */
+function _animatePOIStages() {
+    const s1 = document.getElementById('poi-stage-1');
+    const s2 = document.getElementById('poi-stage-2');
+    const s3 = document.getElementById('poi-stage-3');
+    if (!s1) return;
+
+    // Reset
+    [s1, s2, s3].forEach(s => s.classList.add('dim'));
+    s1.classList.remove('dim');
+
+    // Stage 2 lights up after 1.2 s (Overpass in flight)
+    const t2 = setTimeout(() => { if (s2) s2.classList.remove('dim'); }, 1200);
+    // Stage 3 lights up after 3 s (embedding/FAISS)
+    const t3 = setTimeout(() => { if (s3) s3.classList.remove('dim'); }, 3000);
+
+    // Store timers so we can cancel if needed (not critical here)
+    window._poiStageTimers = [t2, t3];
+}
+
+/**
+ * renderPOIResults — populates the results list with POI cards
+ * and updates the count/cache header.
+ */
+function renderPOIResults(data) {
+    const list   = document.getElementById('poi-results-list');
+    const count  = document.getElementById('poi-result-count');
+    const badge  = document.getElementById('poi-cache-badge');
+
+    list.innerHTML = '';
+
+    // ── Broad-search notice (when no keyword matched, show a subtle tip) ──
+    if (data.query_matched === false) {
+        const notice = document.createElement('div');
+        notice.className = 'poi-broad-notice';
+        notice.innerHTML = `⚠️ No exact category matched “${_escHtml(data.query)}” — showing semantically closest results from a broad search.`;
+        list.appendChild(notice);
+    }
+
+    // ── Location-specific search notice ──
+    if (data.anchor_location) {
+        const locNotice = document.createElement('div');
+        locNotice.className = 'poi-broad-notice';
+        locNotice.style.borderColor = 'rgba(20, 184, 166, 0.3)';
+        locNotice.style.color = '#5eead4';
+        locNotice.innerHTML = `📍 Showing results near <strong>${_escHtml(data.anchor_location)}</strong>`;
+        list.appendChild(locNotice);
+    }
+
+    data.pois.forEach((poi, i) => {
+        const card = document.createElement('div');
+        card.className = 'poi-result-card';
+
+        const tags = poi.tags || {};
+        
+        // 1. Opening hours
+        let hoursHtml = '<span style="color:#9ca3af;font-size:12px;">🕑 Hours unknown</span>';
+        if (tags.opening_hours) {
+            const oh = tags.opening_hours.toLowerCase();
+            if (oh.includes('24/7')) {
+                hoursHtml = '<span style="color:#10b981;font-size:12px;font-weight:600;">🟢 Open 24/7</span>';
+            } else {
+                hoursHtml = `<span style="color:#3b82f6;font-size:12px;">🕐 ${_escHtml(tags.opening_hours)}</span>`;
+            }
+        }
+        
+        // 2. Phone
+        const phone = tags['contact:phone'] || tags['phone'];
+        const phoneHtml = phone ? `<div style="margin-top:3px;"><a href="tel:${_escHtml(phone)}" style="color:#3b82f6;text-decoration:none;font-size:13px;">📞 ${_escHtml(phone)}</a></div>` : '';
+        
+        // 3. Address
+        const street = tags['addr:street'];
+        const city = tags['addr:city'];
+        let addrStr = '';
+        if (street && city) addrStr = `${street}, ${city}`;
+        else if (street) addrStr = street;
+        else if (city) addrStr = city;
+        else addrStr = poi.address || '';
+        
+        // 4 & 5. Distance and Detour
+        const distStr = poi.distance_km ? `${poi.distance_km} km from start` : '';
+        const detourKm = poi.detour_km;
+        let detourStr = '';
+        let detourBadge = '';
+        if (detourKm !== undefined) {
+            detourStr = ` · +${detourKm} km detour`;
+            if (detourKm <= 0.5) detourBadge = '<span style="color:#10b981;font-weight:600;">🟢 On your way</span>';
+            else if (detourKm <= 2.0) detourBadge = '<span style="color:#f59e0b;font-weight:600;">🟡 Small detour</span>';
+            else detourBadge = '<span style="color:#ef4444;font-weight:600;">🔴 Detour needed</span>';
+        }
+        const distanceHtml = distStr ? `<span class="poi-card-distance" style="display:block;margin-bottom:4px;">📍 ${distStr}${detourStr} &nbsp; ${detourBadge}</span>` : '';
+        
+        // 6. Category-specific row
+        let catHtml = '';
+        const typeLower = (poi.type || '').toLowerCase();
+        if (typeLower.includes('petrol') || typeLower.includes('fuel')) {
+            const fuels = [];
+            if (tags['fuel:petrol'] === 'yes') fuels.push('Petrol');
+            if (tags['fuel:diesel'] === 'yes') fuels.push('Diesel');
+            if (tags['fuel:cng'] === 'yes') fuels.push('CNG');
+            if (fuels.length) catHtml = `<div style="font-size:12px;color:#6b7280;margin-top:3px;">⛽ Fuels: ${fuels.join(', ')}</div>`;
+        } else if (typeLower.includes('hospital')) {
+            const ops = tags['operator:type'];
+            const emg = tags['emergency'] === 'yes' ? '🚨 Emergency' : '';
+            if (ops || emg) catHtml = `<div style="font-size:12px;color:#6b7280;margin-top:3px;">🏥 ${ops ? _escHtml(ops) + ' ' : ''}${emg}</div>`;
+        } else if (typeLower.includes('restaurant') || typeLower.includes('food')) {
+            const cuisine = tags['cuisine'];
+            const veg = tags['diet:vegetarian'] === 'yes' ? '🟢 Pure Veg' : '';
+            if (cuisine || veg) catHtml = `<div style="font-size:12px;color:#6b7280;margin-top:3px;">🍽️ ${cuisine ? _escHtml(cuisine) + (veg ? ' · ' : '') : ''}${veg}</div>`;
+        } else if (typeLower.includes('hotel') || typeLower.includes('resort')) {
+            const stars = tags['stars'];
+            if (stars) catHtml = `<div style="font-size:12px;color:#eab308;margin-top:3px;">⭐ ${stars} Star Hotel</div>`;
+        } else if (typeLower.includes('atm') || typeLower.includes('bank')) {
+            const op = tags['operator'] || tags['network'];
+            if (op) catHtml = `<div style="font-size:12px;color:#6b7280;margin-top:3px;">🏦 ${_escHtml(op)}</div>`;
+        }
+
+        const icon     = getPOITypeIcon(poi.type);
+        const badgeCls = getPOIBadgeClass(poi.type);
+        const mapsUrl  = _googleMapsUrl(poi);
+
+        card.innerHTML = `
+            <span class="poi-card-rank">${icon}</span>
+            <div class="poi-card-body">
+                <div class="poi-card-top" style="margin-bottom: 4px;">
+                    <span class="poi-card-name">${_escHtml(poi.name)}</span>
+                    <span class="poi-result-badge ${badgeCls}">${_escHtml(poi.type)}</span>
+                </div>
+                <div style="margin-bottom: 4px;">${hoursHtml}</div>
+                <div class="poi-card-meta">
+                    ${distanceHtml}
+                    ${addrStr ? `<span class="poi-card-address">${_escHtml(addrStr)}</span>` : ''}
+                    ${phoneHtml}
+                    ${catHtml}
+                </div>
+                <div class="poi-card-actions">
+                    <button class="poi-map-btn" data-idx="${i}" title="Show on this map">
+                        🗺️ Show on map
+                    </button>
+                    <a class="poi-gmaps-btn" href="${mapsUrl}" target="_blank" rel="noopener noreferrer"
+                       title="Open in Google Maps">
+                        📍 Google Maps
+                    </a>
+                </div>
+            </div>
+        `;
+
+        // "Show on map" button — pans to marker and switches to Overview tab
+        card.querySelector('.poi-map-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (googleMap && poiMarkers[i]) {
+                googleMap.panTo({ lat: poi.lat, lng: poi.lon });
+                googleMap.setZoom(16);
+                const overviewBtn = document.querySelector('.tab-nav-btn[data-tab="overview"]');
+                if (overviewBtn) overviewBtn.click();
+                google.maps.event.trigger(poiMarkers[i], 'click');
+            }
+        });
+
+        list.appendChild(card);
+    });
+
+    // Update header
+    if (count) count.textContent = `${data.count} result${data.count !== 1 ? 's' : ''} for “${data.query || ''}”`;
+    if (badge) badge.style.display = data.from_cache ? 'inline-flex' : 'none';
+
+    _setPOIUIState('results');
+}
+
+/**
+ * plotPOIMarkers — adds a distinct Google Maps marker for each POI.
+ * InfoWindow now includes an "Open in Google Maps" link.
+ */
+function plotPOIMarkers(pois) {
+    if (!googleMap) return;
+    clearPOIMarkers();
+
+    pois.forEach((poi, i) => {
+        const icon = getPOITypeIcon(poi.type);
+        const mapsUrl = _googleMapsUrl(poi);
+
+        const marker = new google.maps.Marker({
+            position: { lat: poi.lat, lng: poi.lon },
+            map: googleMap,
+            title: poi.name,
+            label: { text: icon, fontSize: '18px' },
+            icon: {
+                url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAABjE+ibYAAAAASUVORK5CYII=',
+                scaledSize: new google.maps.Size(1, 1),
+                anchor: new google.maps.Point(0, 0),
+            },
+            zIndex: 200 + i,
+        });
+
+        // ── InfoWindow with Google Maps deep-link ──
+        const tags = poi.tags || {};
+        let hoursHtml = '';
+        if (tags.opening_hours) {
+            const oh = tags.opening_hours.toLowerCase();
+            if (oh.includes('24/7')) {
+                hoursHtml = '<div style="color:#10b981;font-weight:600;margin-bottom:2px;">🟢 Open 24/7</div>';
+            } else {
+                hoursHtml = `<div style="color:#3b82f6;margin-bottom:2px;">🕐 ${_escHtml(tags.opening_hours)}</div>`;
+            }
+        }
+        
+        let detourStr = '';
+        if (poi.detour_km !== undefined) detourStr = ` · +${poi.detour_km}km detour`;
+        
+        const distLine = poi.distance_km
+            ? `<div style="color:#10b981;font-weight:600;margin-top:2px;">📍 ${poi.distance_km} km from start${detourStr}</div>`
+            : '';
+            
+        // Use full address if available
+        let addrStr = '';
+        if (tags['addr:street'] && tags['addr:city']) addrStr = `${tags['addr:street']}, ${tags['addr:city']}`;
+        else addrStr = tags['addr:street'] || tags['addr:city'] || poi.address || '';
+        
+        const addrLine = addrStr
+            ? `<div style="color:#6b7280;margin-top:2px;">${_escHtml(addrStr)}</div>`
+            : '';
+
+        const infoContent = `
+            <div style="font-family:'Outfit',sans-serif;font-size:13px;min-width:180px;max-width:240px;padding:2px 0;">
+                <div style="font-size:15px;font-weight:700;color:#111;margin-bottom:3px;">${_escHtml(poi.name)}</div>
+                <div style="color:#7c3aed;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">${_escHtml(poi.type)}</div>
+                ${hoursHtml}
+                ${distLine}
+                ${addrLine}
+                <div style="margin-top:10px;">
+                    <a href="${mapsUrl}"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       style="display:inline-flex;align-items:center;gap:5px;
+                              background:#1a73e8;color:#fff;font-weight:700;
+                              font-size:12px;padding:6px 12px;border-radius:6px;
+                              text-decoration:none;font-family:'Outfit',sans-serif;">
+                        📍 Open in Google Maps
+                    </a>
+                </div>
+            </div>`;
+
+        const infoWin = new google.maps.InfoWindow({ content: infoContent, maxWidth: 260 });
+
+        marker.addListener('click', () => {
+            if (window._openPOIInfoWin) window._openPOIInfoWin.close();
+            infoWin.open({ anchor: marker, map: googleMap });
+            window._openPOIInfoWin = infoWin;
+        });
+
+        poiMarkers.push(marker);
+    });
+
+    if (poiMarkers.length > 0) {
+        const bounds = new google.maps.LatLngBounds();
+        poiMarkers.forEach(m => bounds.extend(m.getPosition()));
+        googleMap.fitBounds(bounds, { padding: 60 });
+    }
+}
+
+/**
+ * _googleMapsUrl — builds a Google Maps search URL for a POI.
+ * Uses the place name + type as the search query, centred on its coordinates.
+ * This reliably opens the place listing with reviews, hours, etc.
+ *
+ * URL format: https://www.google.com/maps/search/?api=1&query=NAME+TYPE&center=LAT,LON
+ */
+function _googleMapsUrl(poi) {
+    const searchTerm = encodeURIComponent(`${poi.name} ${poi.type}`);
+    return `https://www.google.com/maps/search/?api=1&query=${searchTerm}&center=${poi.lat},${poi.lon}`;
+}
+
+/** Removes all POI markers from the map. */
+function clearPOIMarkers() {
+    if (window._openPOIInfoWin) {
+        window._openPOIInfoWin.close();
+        window._openPOIInfoWin = null;
+    }
+    poiMarkers.forEach(m => m.setMap(null));
+    poiMarkers = [];
+}
+
+/** Resets the POI panel to its initial state (called after a new route is planned). */
+function resetPOIPanel() {
+    clearPOIMarkers();
+    _setPOIUIState('hidden');
+    const input = document.getElementById('poi-query-input');
+    if (input) input.value = '';
+    document.querySelectorAll('.poi-chip').forEach(c => c.classList.remove('active'));
+}
+
+/**
+ * getPOITypeIcon — maps POI type labels to emoji icons.
+ * Used for both the result card rank column and the map marker label.
+ */
+function getPOITypeIcon(type) {
+    const t = (type || '').toLowerCase();
+    // Fuel / EV
+    if (t.includes('petrol') || t.includes('fuel') || t.includes('ev') || t.includes('charg')) return '⛽';
+    // Food
+    if (t.includes('restaurant') || t.includes('dhaba') || t.includes('food court')) return '🍽️';
+    if (t.includes('fast food'))  return '🍔';
+    if (t.includes('café') || t.includes('cafe') || t.includes('coffee')) return '☕';
+    if (t.includes('bakery'))     return '🍞';
+    if (t.includes('sweet'))      return '🍬';
+    // Accommodation
+    if (t.includes('hotel') || t.includes('motel') || t.includes('resort')) return '🏨';
+    if (t.includes('guest'))      return '🛏️';
+    if (t.includes('hostel'))     return '🏕️';
+    // Medical
+    if (t.includes('hospital'))   return '🏥';
+    if (t.includes('clinic'))     return '🩺';
+    if (t.includes('pharmacy') || t.includes('chemist')) return '💊';
+    if (t.includes('dentist'))    return '🪷';
+    if (t.includes('veterinary')) return '🐾';
+    // Finance
+    if (t.includes('atm'))        return '🏧';
+    if (t.includes('bank'))       return '🏦';
+    if (t.includes('exchange'))   return '💱';
+    // Education
+    if (t.includes('school'))     return '🏫';
+    if (t.includes('college') || t.includes('university')) return '🎓';
+    if (t.includes('library'))    return '📚';
+    if (t.includes('kindergarten') || t.includes('nursery') || t.includes('playschool')) return '🧸';
+    if (t.includes('language') || t.includes('training') || t.includes('coaching')) return '📝';
+    // Sports / Recreation
+    if (t.includes('gym') || t.includes('fitness')) return '🏋️';
+    if (t.includes('stadium'))    return '🏟️';
+    if (t.includes('swimming') || t.includes('pool')) return '🏊';
+    if (t.includes('sports') || t.includes('pitch')) return '⚽';
+    if (t.includes('playground')) return '🛷';
+    // Shopping
+    if (t.includes('supermarket') || t.includes('grocery') || t.includes('market')) return '🛒';
+    if (t.includes('mall'))       return '🏬';
+    if (t.includes('cloth'))      return '👕';
+    if (t.includes('electronic') || t.includes('mobile')) return '📱';
+    // Emergency
+    if (t.includes('police'))     return '🚓';
+    if (t.includes('fire'))       return '🚒';
+    // Government / Post
+    if (t.includes('post'))       return '📮';
+    if (t.includes('government')) return '🏛️';
+    // Transport
+    if (t.includes('bus'))        return '🚌';
+    if (t.includes('railway') || t.includes('train') || t.includes('metro')) return '🚆';
+    if (t.includes('airport'))    return '✈️';
+    if (t.includes('taxi'))       return '🚕';
+    // Facilities
+    if (t.includes('parking'))    return '🅿️';
+    if (t.includes('restroom') || t.includes('toilet')) return '🚻';
+    // Religious
+    if (t.includes('temple') || t.includes('mosque') || t.includes('church') || t.includes('worship')) return '⛪';
+    // Tourist / Nature
+    if (t.includes('museum'))     return '🏛️';
+    if (t.includes('monument'))   return '🗿';
+    if (t.includes('zoo'))        return '🦁';
+    if (t.includes('amusement') || t.includes('arcade')) return '🎡';
+    if (t.includes('viewpoint') || t.includes('attraction')) return '🏞️';
+    if (t.includes('beach'))      return '🏖️';
+    if (t.includes('garden'))     return '🌺';
+    if (t.includes('park') || t.includes('nature')) return '🌳';
+    if (t.includes('rest area'))  return '🛑';
+    return '📍';
+}
+
+/**
+ * getPOIBadgeClass — returns the CSS badge colour class for a given type.
+ */
+function getPOIBadgeClass(type) {
+    const t = (type || '').toLowerCase();
+    if (t.includes('petrol') || t.includes('fuel') || t.includes('charg')) return 'poi-badge-fuel';
+    if (t.includes('restaurant') || t.includes('food') || t.includes('dhaba') || t.includes('fast food') || t.includes('bakery') || t.includes('sweet')) return 'poi-badge-restaurant';
+    if (t.includes('café') || t.includes('cafe')) return 'poi-badge-cafe';
+    if (t.includes('hotel') || t.includes('motel') || t.includes('guest') || t.includes('hostel') || t.includes('resort')) return 'poi-badge-hotel';
+    if (t.includes('hospital') || t.includes('clinic') || t.includes('dentist') || t.includes('veterinary')) return 'poi-badge-hospital';
+    if (t.includes('pharmacy')) return 'poi-badge-pharmacy';
+    if (t.includes('atm') || t.includes('bank') || t.includes('exchange')) return 'poi-badge-atm';
+    if (t.includes('school') || t.includes('college') || t.includes('university') || t.includes('library') || t.includes('training') || t.includes('kindergarten')) return 'poi-badge-education';
+    if (t.includes('gym') || t.includes('fitness') || t.includes('stadium') || t.includes('swimming') || t.includes('sports') || t.includes('playground')) return 'poi-badge-sports';
+    if (t.includes('police') || t.includes('fire') || t.includes('emergency')) return 'poi-badge-emergency';
+    if (t.includes('bus') || t.includes('railway') || t.includes('train') || t.includes('airport') || t.includes('taxi') || t.includes('metro')) return 'poi-badge-transport';
+    return 'poi-badge-default';
+}
+
+/** Simple HTML escape to prevent XSS in dynamically inserted POI data. */
+function _escHtml(str) {
+    return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 }

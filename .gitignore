@@ -13,6 +13,11 @@ predictions.db
 # Environments / secrets
 .env
 
+# Firebase service account key (never commit this!)
+serviceAccountKey.json
+*serviceAccount*.json
+*firebase-adminsdk*.json
+
 # Large model files if you plan to retrain them, but for deployment you need these,
 # so keep models/ folder in git unless you load them from an external release/bucket.
 # For free deployments like Render/Hugging Face, keeping models/ in the repo (under 100MB total) is fine.

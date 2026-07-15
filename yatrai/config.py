@@ -247,3 +247,30 @@ def get_aqi_category(aqi_value: int) -> tuple:
         if low <= aqi_value <= high:
             return name, color
     return "Hazardous", "#7e0023"
+
+
+# ─── Overpass API (OpenStreetMap POI search) ───────────────────────
+# Primary and fallback public Overpass instances (both are free, no key)
+OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+OVERPASS_FALLBACK_URL = "https://overpass.karte.io/api/interpreter"
+OVERPASS_TIMEOUT = 15   # seconds per individual Overpass request
+
+# ─── POI Search Pipeline Constants ────────────────────────────────
+# Distance between sampled points along the route polyline
+POI_SAMPLE_INTERVAL_KM = 5.0
+
+# Default radius to search for POIs around each sampled point
+POI_DEFAULT_RADIUS_KM = 2.0
+
+# Maximum number of POI results to return after FAISS ranking
+POI_MAX_RESULTS = 15
+
+# Firestore TTL: cached Overpass results expire after this many hours
+POI_CACHE_TTL_HOURS = 24
+
+# Firestore collection name for route-level POI cache documents
+POI_CACHE_COLLECTION = "poi_cache"
+
+# Local embedding model — runs on CPU, ~90 MB, comfortably within Render free tier
+EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+

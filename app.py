@@ -12,7 +12,7 @@ from pathlib import Path
 # Ensure project root is on path
 sys.path.insert(0, os.path.dirname(__file__))
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,6 +34,11 @@ from yatrai.drift_detection import log_prediction, get_prediction_stats
 from yatrai.fuel_calculator import calculate_fuel
 from yatrai.sustainability import calculate_sustainability
 from yatrai.apis.gemini import generate_travel_summary
+# POI chatbot imports
+from yatrai.poi_search import run_poi_search
+from yatrai.poi_cache import make_cache_key, get_cached_pois, set_cached_pois
+from yatrai.firebase_admin_init import get_firestore_client  # initialise on startup
+
 
 # Simple in-memory prediction cache: key -> (result_dict, timestamp)
 _predict_cache: dict = {}
@@ -103,10 +108,28 @@ async def startup_event():
     load_models()
     # Initialize SQLite
     _init_db()
+    # Warm up Firebase Admin SDK (non-blocking — logs outcome)
+    get_firestore_client()
+    # Pre-warm embedding model so first POI search is fast
+    # Run in background thread so it doesn't delay server startup
+    import asyncio
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(None, _warm_embedding_model)
     print("\n" + "="*50)
     print("  YatrAI is running!")
     print("  Open http://localhost:8000 in your browser")
     print("="*50 + "\n")
+
+
+def _warm_embedding_model():
+    """Pre-load MiniLM in a background thread so the first POI search feels instant."""
+    try:
+        from yatrai.poi_search import get_embedding_model
+        get_embedding_model()
+        print("[OK] POI embedding model pre-loaded")
+    except Exception as e:
+        print(f"[!] Embedding model pre-load failed (will load on first search): {e}")
+
 
 
 def _init_db():
@@ -228,7 +251,7 @@ async def get_frontend_config():
     }
 
 @app.post("/predict")
-async def predict(request: PredictRequest):
+async def predict(request: PredictRequest, background_tasks: BackgroundTasks):
     """Main prediction endpoint — the heart of YatrAI."""
     now = datetime.now()
     
@@ -516,6 +539,25 @@ async def predict(request: PredictRequest):
         })
     except Exception:
         pass  # Don't fail prediction if logging fails
+        
+    # Trigger background cache pre-warming for POIs
+    from yatrai.poi_search import pre_warm_poi_cache_sync
+    try:
+        if "route" in response and "geometry" in response["route"]:
+            geom = response["route"]["geometry"]
+            geom_type = geom.get("type", "")
+            geom_coords = geom.get("coordinates", [])
+            
+            coords = []
+            if geom_type == "LineString":
+                coords = geom_coords
+            elif geom_type == "MultiLineString":
+                coords = [c for segment in geom_coords for c in segment]
+                
+            if coords:
+                background_tasks.add_task(pre_warm_poi_cache_sync, coords)
+    except Exception as e:
+        print(f"Error scheduling POI cache pre-warm: {e}")
     
     return response
 
@@ -597,6 +639,213 @@ async def get_city_aqi(city: str):
 async def prediction_stats():
     """Get prediction statistics."""
     return get_prediction_stats()
+
+
+# ── POI Search Models & Endpoint ──────────────────────────────────────────────
+
+class POISearchRequest(BaseModel):
+    """
+    Request body for the POI search endpoint.
+    route_geometry is the GeoJSON geometry object from the /predict response.
+    """
+    route_geometry: dict          # GeoJSON geometry from /predict (type + coordinates)
+    origin_lat: float             # User's starting point latitude
+    origin_lon: float             # User's starting point longitude
+    query: str                    # Free-text query: e.g. "petrol pump", "vegetarian restaurant"
+    radius_km: float = 2.0        # Search radius (km) around each sampled route point
+
+
+@app.post("/poi-search")
+async def poi_search(request: POISearchRequest):
+    """
+    Route-based POI search endpoint.
+
+    Pipeline (see yatrai/poi_search.py for annotated implementation):
+      1. Parse query to extract category + optional location anchor (Fix 1)
+      2. If anchor found, geocode it (with Gandhinagar sector hardcode — Fix 2)
+      3. If no category detected, return a helpful prompt
+      4. Extract GeoJSON coordinates from request.route_geometry
+      5. Generate cache key from route coordinates + mapped OSM tags
+      6. Check Firestore cache → fast path if hit
+      7-12. Run search pipeline with progressive radius widening (Fix 3)
+    """
+    import asyncio
+
+    # ── Fix 1: Parse query into category + location anchor ───────────
+    from yatrai.poi_search import parse_poi_query
+    parsed = parse_poi_query(request.query.strip())
+
+    category     = parsed["category"]
+    anchor       = parsed["anchor"]
+    has_category = parsed["has_category"]
+
+    # If user typed only a location with no POI category, return a prompt
+    if not has_category and anchor:
+        return {
+            "pois": [],
+            "count": 0,
+            "from_cache": False,
+            "prompt": True,
+            "message": (
+                f"What are you looking for in {anchor}? "
+                f"Try: ATM in {anchor}, restaurant near {anchor}, "
+                f"petrol pump near {anchor}"
+            ),
+        }
+
+    # The search query sent to the pipeline (just the category part)
+    search_query = category or request.query.strip()
+
+    # ── Fix 1 + Fix 2: Geocode the location anchor if present ────────
+    anchor_point = None  # (lat, lon) tuple or None
+    anchor_display = None
+
+    if anchor:
+        from yatrai.apis.geocoding import geocode_poi_anchor
+        loop = asyncio.get_running_loop()
+        geo = await loop.run_in_executor(None, geocode_poi_anchor, anchor)
+        if geo:
+            anchor_point = (geo["lat"], geo["lon"])
+            anchor_display = geo["display_name"]
+            print(f"[POI] Anchor '{anchor}' → {anchor_display} ({geo['lat']:.4f}, {geo['lon']:.4f})")
+        else:
+            print(f"[POI] Could not geocode anchor '{anchor}', falling back to route search")
+
+    # ── Step 1: Extract coordinate list from GeoJSON geometry ────────
+    geometry = request.route_geometry
+    geom_type = geometry.get("type", "")
+    coords = geometry.get("coordinates", [])
+
+    if geom_type == "LineString":
+        route_coords = coords  # [[lon, lat], ...]
+    elif geom_type == "MultiLineString":
+        # Flatten multiple segments into one list
+        route_coords = [c for segment in coords for c in segment]
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported geometry type '{geom_type}'. Expected LineString."
+        )
+
+    if not route_coords:
+        raise HTTPException(status_code=400, detail="Route geometry has no coordinates.")
+
+    # ── Step 2: Map query to OSM tags (needed for cache key fallback) ─
+    from yatrai.apis.overpass import map_query_to_tags
+    tags, query_matched = map_query_to_tags(search_query)
+
+    # ── Step 3: Generate stable cache keys ───────────────────────────
+    # If it's an anchor search, bypass the route cache and make a unique key
+    if anchor_point:
+        cache_key = make_cache_key([[anchor_point[1], anchor_point[0]]], tags)
+        master_cache_key = None
+    else:
+        cache_key = make_cache_key(route_coords, tags)
+        # Fix A3: Look for the pre-warmed "MASTER" cache first
+        master_cache_key = make_cache_key(route_coords, ["MASTER_ALL"])
+
+    # ── Step 4: Check Firestore cache ────────────────────────────────
+    cached = None
+    from_cache = False
+    
+    if master_cache_key:
+        cached = get_cached_pois(master_cache_key)
+        
+    if cached:
+        from_cache = True
+        print("[POI] Hit MASTER cache for route.")
+    else:
+        cached = get_cached_pois(cache_key)
+        if cached:
+            from_cache = True
+            print("[POI] Hit specific cache for query.")
+    result = await run_poi_search(
+        geometry_coords=route_coords,
+        origin_lat=request.origin_lat,
+        origin_lon=request.origin_lon,
+        query=search_query,
+        radius_km=request.radius_km,
+        cache_key=cache_key,
+        cached_result=cached,
+        anchor_point=anchor_point,
+    )
+
+    pois       = result["pois"]
+    embeddings = result.get("embeddings")
+    all_pois   = result.get("all_pois", pois)  # full set for caching
+
+    # ── Step 11: Write to Firestore cache (only on cache miss) ───────
+    if not from_cache and embeddings is not None and all_pois:
+        try:
+            # Fire-and-forget: don't block the response on cache write
+            loop = asyncio.get_running_loop()
+            loop.run_in_executor(
+                None, set_cached_pois, cache_key, all_pois, embeddings
+            )
+        except Exception as e:
+            print(f"[POI] Cache write failed (non-fatal): {e}")
+
+    # ── Step 12: Build and return response ───────────────────────────
+    if not pois:
+        msg = f"No '{search_query}' found"
+        if anchor_display:
+            msg += f" near {anchor_display}"
+        else:
+            msg += " along this route"
+        msg += ". This area may have limited OSM coverage — try a broader category."
+
+        return {
+            "pois": [],
+            "count": 0,
+            "from_cache": from_cache,
+            "message": msg,
+        }
+
+    # Strip the raw OSM tags dict from response (not needed by frontend, keeps payload small)
+    clean_pois = [
+        {
+            "name":        p["name"],
+            "lat":         p["lat"],
+            "lon":         p["lon"],
+            "type":        p["type"],
+            "distance_km": p.get("distance_km", 0.0),
+            "address":     _format_address(p.get("tags", {})),
+        }
+        for p in pois
+    ]
+
+    resp = {
+        "pois":          clean_pois,
+        "count":         len(clean_pois),
+        "from_cache":    from_cache,
+        "query":         search_query,
+        "tags_used":     tags,
+        "query_matched": query_matched,   # False = broad fallback was used
+    }
+
+    # Include anchor info if a location-specific search was done
+    if anchor_display:
+        resp["anchor_location"] = anchor_display
+
+    return resp
+
+
+
+def _format_address(tags: dict) -> str:
+    """Extracts a human-readable address string from OSM tag dict."""
+    parts = [
+        tags.get("addr:housenumber", ""),
+        tags.get("addr:street", ""),
+        tags.get("addr:city", "") or tags.get("addr:town", ""),
+        tags.get("addr:state", ""),
+    ]
+    address = ", ".join(p for p in parts if p)
+    if not address:
+        # Fallback: use any name-like tag or opening hours as context
+        address = tags.get("operator", "") or tags.get("brand", "")
+    return address or ""
+
+
 
 
 #  Serve Frontend Static Files 
