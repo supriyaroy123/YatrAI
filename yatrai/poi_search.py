@@ -188,6 +188,9 @@ def get_embedding_model():
     global _embedding_model
     if _embedding_model is None:
         logger.info("[POISearch] Loading embedding model '%s'...", EMBEDDING_MODEL_NAME)
+        import torch
+        torch.set_num_threads(1)
+        torch.set_num_interop_threads(1)
         from sentence_transformers import SentenceTransformer
         _embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
         logger.info("[POISearch] Embedding model loaded.")
