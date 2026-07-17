@@ -5,8 +5,6 @@ import requests
 import json
 import os
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-
 def generate_travel_summary(
     origin: str,
     destination: str,
@@ -29,12 +27,14 @@ def generate_travel_summary(
     Generate a natural-language travel summary, recommendation, safety alert, weather alert,
     fuel cost insight, and sustainability insight using the Gemini API.
     """
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    
     model = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
     if model.startswith("models/"):
         model = model.replace("models/", "")
     
     # Correcting domain mapping to standard Google API endpoint
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     
     fuel_info = ""
     tree_info = ""
@@ -132,3 +132,71 @@ IMPORTANT: Do not return any markdown tags or backticks (like ```json). Return O
         print(f"[Gemini API] Error: {e}")
         return fallback_response
 
+
+def extract_poi_intent(query: str) -> dict:
+    """
+    Use Gemini to extract the search intent from a raw user query.
+    Returns:
+        {
+            "category": "restaurant", # or other Google Maps place type
+            "location_hint": "sector 15",
+            "filters": ["vegetarian", "cheap"],
+            "hindi_detected": True
+        }
+    """
+    fallback_intent = {
+        "category": query.strip(),
+        "location_hint": None,
+        "filters": [],
+        "hindi_detected": False
+    }
+
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not api_key:
+        return fallback_intent
+
+    model = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+    if model.startswith("models/"):
+        model = model.replace("models/", "")
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+
+    prompt = f"""
+You are an intent extractor for a route navigation app powered by OpenStreetMap (Overpass API). 
+Extract the search intent from the user query and return ONLY a JSON object with these fields: 
+- category (The most relevant OpenStreetMap key=value tag. Examples: amenity=cafe, amenity=restaurant, amenity=fuel, amenity=hospital, amenity=pharmacy, tourism=hotel, amenity=atm, amenity=parking. Guess the best matching standard OSM tag).
+- location_hint (specific place name if mentioned, else null)
+- filters (array of any constraints like vegetarian/cheap/24hour/emergency)
+- hindi_detected (true/false)
+
+User query: "{query}"
+
+Return ONLY raw JSON, no explanation, no markdown blocks.
+"""
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.1,
+            "responseMimeType": "application/json"
+        }
+    }
+    
+    try:
+        response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=5.0)
+        if response.status_code != 200:
+            return fallback_intent
+        
+        data = response.json()
+        text_content = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "{}")
+        
+        # Parse JSON and enforce schema
+        intent = json.loads(text_content)
+        return {
+            "category": intent.get("category") or query.strip(),
+            "location_hint": intent.get("location_hint"),
+            "filters": intent.get("filters", []),
+            "hindi_detected": intent.get("hindi_detected", False)
+        }
+    except Exception as e:
+        print(f"[Gemini Intent Extractor] Error: {e}, falling back to keyword matching.")
+        return fallback_intent

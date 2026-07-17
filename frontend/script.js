@@ -462,8 +462,14 @@ async function handlePredict() {
         });
 
         if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.detail || `Server error: ${response.status}`);
+            let errMsg = `Error ${response.status}`;
+            try {
+                const errData = await response.json();
+                errMsg = errData.detail || errMsg;
+            } catch (e) {
+                errMsg = "The server ran out of memory or timed out. Please try again or upgrade your cloud host.";
+            }
+            throw new Error(errMsg);
         }
 
         const data = await response.json();
@@ -1293,13 +1299,20 @@ window.handlePOIQuery = async function(query) {
         });
 
         if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.detail || `Server error ${res.status}`);
+            let errMsg = `Server error ${res.status}`;
+            try {
+                const err = await res.json();
+                errMsg = err.detail || errMsg;
+            } catch (e) {
+                // If the server crashed completely and returned an HTML page instead of JSON
+                errMsg = "The server ran out of memory or timed out. Please try again or upgrade your cloud host.";
+            }
+            throw new Error(errMsg);
         }
 
         const data = await res.json();
 
-        // Fix 1: Handle "prompt" response — user typed a location but no category
+        // Fix 1: Handle "prompt" response
         if (data.prompt) {
             const msgEl = document.getElementById('poi-empty-msg');
             if (msgEl) msgEl.textContent = data.message || 'Please specify what you are looking for.';
@@ -1308,16 +1321,13 @@ window.handlePOIQuery = async function(query) {
         }
 
         if (!data.pois || data.pois.length === 0) {
-            // Show empty state with server-provided message
             const msgEl = document.getElementById('poi-empty-msg');
             if (msgEl && data.message) msgEl.textContent = data.message;
             _setPOIUIState('empty');
             return;
         }
 
-
         renderPOIResults(data);
-        plotPOIMarkers(data.pois);
 
     } catch (err) {
         _setPOIUIState('hidden');
@@ -1347,7 +1357,6 @@ function _setPOIUIState(state) {
 
 /**
  * Animates the 3-stage loading text while the request is in-flight.
- * Stages illuminate in sequence to give feedback on long Overpass waits.
  */
 function _animatePOIStages() {
     const s1 = document.getElementById('poi-stage-1');
@@ -1355,39 +1364,117 @@ function _animatePOIStages() {
     const s3 = document.getElementById('poi-stage-3');
     if (!s1) return;
 
-    // Reset
     [s1, s2, s3].forEach(s => s.classList.add('dim'));
     s1.classList.remove('dim');
 
-    // Stage 2 lights up after 1.2 s (Overpass in flight)
     const t2 = setTimeout(() => { if (s2) s2.classList.remove('dim'); }, 1200);
-    // Stage 3 lights up after 3 s (embedding/FAISS)
     const t3 = setTimeout(() => { if (s3) s3.classList.remove('dim'); }, 3000);
-
-    // Store timers so we can cancel if needed (not critical here)
     window._poiStageTimers = [t2, t3];
 }
 
-/**
- * renderPOIResults — populates the results list with POI cards
- * and updates the count/cache header.
- */
+function _createPOICard(poi, i, list) {
+    const card = document.createElement('div');
+    card.className = 'poi-result-card';
+    const tags = poi.tags || {};
+    let hoursHtml = '<span style="color:#9ca3af;font-size:12px;">🕑 Hours unknown</span>';
+    if (tags.opening_hours) {
+        const oh = tags.opening_hours.toLowerCase();
+        if (oh.includes('24/7')) {
+            hoursHtml = '<span style="color:#10b981;font-size:12px;font-weight:600;">🟢 Open 24/7</span>';
+        } else {
+            hoursHtml = `<span style="color:#3b82f6;font-size:12px;">🕐 ${_escHtml(tags.opening_hours)}</span>`;
+        }
+    }
+    const phone = tags['contact:phone'] || tags['phone'];
+    const phoneHtml = phone ? `<div style="margin-top:3px;"><a href="tel:${_escHtml(phone)}" style="color:#3b82f6;text-decoration:none;font-size:13px;">📞 ${_escHtml(phone)}</a></div>` : '';
+    const street = tags['addr:street'];
+    const city = tags['addr:city'];
+    let addrStr = '';
+    if (street && city) addrStr = `${street}, ${city}`;
+    else if (street) addrStr = street;
+    else if (city) addrStr = city;
+    else addrStr = poi.address || '';
+    const distStr = poi.distance_km ? `${poi.distance_km} km from start` : '';
+    const detourKm = poi.detour_km;
+    let detourStr = '';
+    let detourBadge = '';
+    if (detourKm !== undefined) {
+        detourStr = ` · +${detourKm} km detour`;
+        if (detourKm <= 0.5) detourBadge = '<span style="color:#10b981;font-weight:600;">🟢 On your way</span>';
+        else if (detourKm <= 2.0) detourBadge = '<span style="color:#f59e0b;font-weight:600;">🟡 Small detour</span>';
+        else detourBadge = '<span style="color:#ef4444;font-weight:600;">🔴 Detour needed</span>';
+    }
+    const distanceHtml = distStr ? `<span class="poi-card-distance" style="display:block;margin-bottom:4px;">📍 ${distStr}${detourStr} &nbsp; ${detourBadge}</span>` : '';
+    let catHtml = '';
+    const typeLower = (poi.type || '').toLowerCase();
+    if (typeLower.includes('petrol') || typeLower.includes('fuel')) {
+        const fuels = [];
+        if (tags['fuel:petrol'] === 'yes') fuels.push('Petrol');
+        if (tags['fuel:diesel'] === 'yes') fuels.push('Diesel');
+        if (tags['fuel:cng'] === 'yes') fuels.push('CNG');
+        if (fuels.length) catHtml = `<div style="font-size:12px;color:#6b7280;margin-top:3px;">⛽ Fuels: ${fuels.join(', ')}</div>`;
+    } else if (typeLower.includes('hospital')) {
+        const ops = tags['operator:type'];
+        const emg = tags['emergency'] === 'yes' ? '🚨 Emergency' : '';
+        if (ops || emg) catHtml = `<div style="font-size:12px;color:#6b7280;margin-top:3px;">🏥 ${ops ? _escHtml(ops) + ' ' : ''}${emg}</div>`;
+    } else if (typeLower.includes('restaurant') || typeLower.includes('food')) {
+        const cuisine = tags['cuisine'];
+        const veg = tags['diet:vegetarian'] === 'yes' ? '🟢 Pure Veg' : '';
+        if (cuisine || veg) catHtml = `<div style="font-size:12px;color:#6b7280;margin-top:3px;">🍽️ ${cuisine ? _escHtml(cuisine) + (veg ? ' · ' : '') : ''}${veg}</div>`;
+    } else if (typeLower.includes('hotel') || typeLower.includes('resort')) {
+        const stars = tags['stars'];
+        if (stars) catHtml = `<div style="font-size:12px;color:#eab308;margin-top:3px;">⭐ ${stars} Star Hotel</div>`;
+    } else if (typeLower.includes('atm') || typeLower.includes('bank')) {
+        const op = tags['operator'] || tags['network'];
+        if (op) catHtml = `<div style="font-size:12px;color:#6b7280;margin-top:3px;">🏦 ${_escHtml(op)}</div>`;
+    }
+    const icon = getPOITypeIcon(poi.type);
+    const badgeCls = getPOIBadgeClass(poi.type);
+    const mapsUrl = _googleMapsUrl(poi);
+    card.innerHTML = `
+        <span class="poi-card-rank">${icon}</span>
+        <div class="poi-card-body">
+            <div class="poi-card-top" style="margin-bottom: 4px;">
+                <span class="poi-card-name">${_escHtml(poi.name)}</span>
+                <span class="poi-result-badge ${badgeCls}">${_escHtml(poi.type)}</span>
+            </div>
+            <div style="margin-bottom: 4px;">${hoursHtml}</div>
+            <div class="poi-card-meta">
+                ${distanceHtml}
+                ${addrStr ? `<span class="poi-card-address">${_escHtml(addrStr)}</span>` : ''}
+                ${phoneHtml}
+                ${catHtml}
+            </div>
+            <div class="poi-card-actions">
+                <button class="poi-map-btn" data-idx="${i}" title="Show on this map">🗺️ Show on map</button>
+                <a class="poi-gmaps-btn" href="${mapsUrl}" target="_blank" rel="noopener noreferrer" title="Open in Google Maps">📍 Google Maps</a>
+            </div>
+        </div>
+    `;
+    card.querySelector('.poi-map-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (googleMap && poiMarkers[i]) {
+            googleMap.panTo({ lat: poi.lat, lng: poi.lon });
+            googleMap.setZoom(16);
+            const overviewBtn = document.querySelector('.tab-nav-btn[data-tab="overview"]');
+            if (overviewBtn) overviewBtn.click();
+            google.maps.event.trigger(poiMarkers[i], 'click');
+        }
+    });
+    list.appendChild(card);
+}
+
 function renderPOIResults(data) {
-    const list   = document.getElementById('poi-results-list');
-    const count  = document.getElementById('poi-result-count');
-    const badge  = document.getElementById('poi-cache-badge');
-
+    const list = document.getElementById('poi-results-list');
+    const count = document.getElementById('poi-result-count');
+    const badge = document.getElementById('poi-cache-badge');
     list.innerHTML = '';
-
-    // ── Broad-search notice (when no keyword matched, show a subtle tip) ──
     if (data.query_matched === false) {
         const notice = document.createElement('div');
         notice.className = 'poi-broad-notice';
         notice.innerHTML = `⚠️ No exact category matched “${_escHtml(data.query)}” — showing semantically closest results from a broad search.`;
         list.appendChild(notice);
     }
-
-    // ── Location-specific search notice ──
     if (data.anchor_location) {
         const locNotice = document.createElement('div');
         locNotice.className = 'poi-broad-notice';
@@ -1396,126 +1483,59 @@ function renderPOIResults(data) {
         locNotice.innerHTML = `📍 Showing results near <strong>${_escHtml(data.anchor_location)}</strong>`;
         list.appendChild(locNotice);
     }
-
-    data.pois.forEach((poi, i) => {
-        const card = document.createElement('div');
-        card.className = 'poi-result-card';
-
-        const tags = poi.tags || {};
-        
-        // 1. Opening hours
-        let hoursHtml = '<span style="color:#9ca3af;font-size:12px;">🕑 Hours unknown</span>';
-        if (tags.opening_hours) {
-            const oh = tags.opening_hours.toLowerCase();
-            if (oh.includes('24/7')) {
-                hoursHtml = '<span style="color:#10b981;font-size:12px;font-weight:600;">🟢 Open 24/7</span>';
-            } else {
-                hoursHtml = `<span style="color:#3b82f6;font-size:12px;">🕐 ${_escHtml(tags.opening_hours)}</span>`;
-            }
-        }
-        
-        // 2. Phone
-        const phone = tags['contact:phone'] || tags['phone'];
-        const phoneHtml = phone ? `<div style="margin-top:3px;"><a href="tel:${_escHtml(phone)}" style="color:#3b82f6;text-decoration:none;font-size:13px;">📞 ${_escHtml(phone)}</a></div>` : '';
-        
-        // 3. Address
-        const street = tags['addr:street'];
-        const city = tags['addr:city'];
-        let addrStr = '';
-        if (street && city) addrStr = `${street}, ${city}`;
-        else if (street) addrStr = street;
-        else if (city) addrStr = city;
-        else addrStr = poi.address || '';
-        
-        // 4 & 5. Distance and Detour
-        const distStr = poi.distance_km ? `${poi.distance_km} km from start` : '';
-        const detourKm = poi.detour_km;
-        let detourStr = '';
-        let detourBadge = '';
-        if (detourKm !== undefined) {
-            detourStr = ` · +${detourKm} km detour`;
-            if (detourKm <= 0.5) detourBadge = '<span style="color:#10b981;font-weight:600;">🟢 On your way</span>';
-            else if (detourKm <= 2.0) detourBadge = '<span style="color:#f59e0b;font-weight:600;">🟡 Small detour</span>';
-            else detourBadge = '<span style="color:#ef4444;font-weight:600;">🔴 Detour needed</span>';
-        }
-        const distanceHtml = distStr ? `<span class="poi-card-distance" style="display:block;margin-bottom:4px;">📍 ${distStr}${detourStr} &nbsp; ${detourBadge}</span>` : '';
-        
-        // 6. Category-specific row
-        let catHtml = '';
-        const typeLower = (poi.type || '').toLowerCase();
-        if (typeLower.includes('petrol') || typeLower.includes('fuel')) {
-            const fuels = [];
-            if (tags['fuel:petrol'] === 'yes') fuels.push('Petrol');
-            if (tags['fuel:diesel'] === 'yes') fuels.push('Diesel');
-            if (tags['fuel:cng'] === 'yes') fuels.push('CNG');
-            if (fuels.length) catHtml = `<div style="font-size:12px;color:#6b7280;margin-top:3px;">⛽ Fuels: ${fuels.join(', ')}</div>`;
-        } else if (typeLower.includes('hospital')) {
-            const ops = tags['operator:type'];
-            const emg = tags['emergency'] === 'yes' ? '🚨 Emergency' : '';
-            if (ops || emg) catHtml = `<div style="font-size:12px;color:#6b7280;margin-top:3px;">🏥 ${ops ? _escHtml(ops) + ' ' : ''}${emg}</div>`;
-        } else if (typeLower.includes('restaurant') || typeLower.includes('food')) {
-            const cuisine = tags['cuisine'];
-            const veg = tags['diet:vegetarian'] === 'yes' ? '🟢 Pure Veg' : '';
-            if (cuisine || veg) catHtml = `<div style="font-size:12px;color:#6b7280;margin-top:3px;">🍽️ ${cuisine ? _escHtml(cuisine) + (veg ? ' · ' : '') : ''}${veg}</div>`;
-        } else if (typeLower.includes('hotel') || typeLower.includes('resort')) {
-            const stars = tags['stars'];
-            if (stars) catHtml = `<div style="font-size:12px;color:#eab308;margin-top:3px;">⭐ ${stars} Star Hotel</div>`;
-        } else if (typeLower.includes('atm') || typeLower.includes('bank')) {
-            const op = tags['operator'] || tags['network'];
-            if (op) catHtml = `<div style="font-size:12px;color:#6b7280;margin-top:3px;">🏦 ${_escHtml(op)}</div>`;
-        }
-
-        const icon     = getPOITypeIcon(poi.type);
-        const badgeCls = getPOIBadgeClass(poi.type);
-        const mapsUrl  = _googleMapsUrl(poi);
-
-        card.innerHTML = `
-            <span class="poi-card-rank">${icon}</span>
-            <div class="poi-card-body">
-                <div class="poi-card-top" style="margin-bottom: 4px;">
-                    <span class="poi-card-name">${_escHtml(poi.name)}</span>
-                    <span class="poi-result-badge ${badgeCls}">${_escHtml(poi.type)}</span>
-                </div>
-                <div style="margin-bottom: 4px;">${hoursHtml}</div>
-                <div class="poi-card-meta">
-                    ${distanceHtml}
-                    ${addrStr ? `<span class="poi-card-address">${_escHtml(addrStr)}</span>` : ''}
-                    ${phoneHtml}
-                    ${catHtml}
-                </div>
-                <div class="poi-card-actions">
-                    <button class="poi-map-btn" data-idx="${i}" title="Show on this map">
-                        🗺️ Show on map
-                    </button>
-                    <a class="poi-gmaps-btn" href="${mapsUrl}" target="_blank" rel="noopener noreferrer"
-                       title="Open in Google Maps">
-                        📍 Google Maps
-                    </a>
-                </div>
-            </div>
-        `;
-
-        // "Show on map" button — pans to marker and switches to Overview tab
-        card.querySelector('.poi-map-btn').addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (googleMap && poiMarkers[i]) {
-                googleMap.panTo({ lat: poi.lat, lng: poi.lon });
-                googleMap.setZoom(16);
-                const overviewBtn = document.querySelector('.tab-nav-btn[data-tab="overview"]');
-                if (overviewBtn) overviewBtn.click();
-                google.maps.event.trigger(poiMarkers[i], 'click');
-            }
+    
+    let currentLoaded = 0;
+    const batchSize = 10;
+    const renderBatch = () => {
+        const nextBatch = data.pois.slice(currentLoaded, currentLoaded + batchSize);
+        nextBatch.forEach((poi, i) => {
+            _createPOICard(poi, currentLoaded + i, list);
         });
-
-        list.appendChild(card);
-    });
-
-    // Update header
+        currentLoaded += nextBatch.length;
+        plotPOIMarkers(data.pois.slice(0, currentLoaded));
+    };
+    
+    renderBatch();
+    
+    const seeMoreContainer = document.createElement('div');
+    seeMoreContainer.style.textAlign = 'center';
+    seeMoreContainer.style.padding = '15px 0';
+    const seeMoreBtn = document.createElement('button');
+    seeMoreBtn.style.padding = '10px 20px';
+    seeMoreBtn.style.background = '#2563eb';
+    seeMoreBtn.style.color = '#fff';
+    seeMoreBtn.style.border = 'none';
+    seeMoreBtn.style.borderRadius = '8px';
+    seeMoreBtn.style.cursor = 'pointer';
+    seeMoreBtn.style.fontWeight = '600';
+    seeMoreBtn.style.fontFamily = "'Outfit', sans-serif";
+    seeMoreBtn.onmouseover = () => seeMoreBtn.style.background = '#1d4ed8';
+    seeMoreBtn.onmouseout = () => seeMoreBtn.style.background = '#2563eb';
+    
+    const updateBtn = () => {
+        const remaining = data.pois.length - currentLoaded;
+        if (remaining <= 0) {
+            seeMoreContainer.remove();
+        } else {
+            seeMoreBtn.textContent = `See ${Math.min(batchSize, remaining)} more results (${remaining} left)`;
+            list.appendChild(seeMoreContainer);
+        }
+    };
+    
+    if (data.pois.length > currentLoaded) {
+        seeMoreContainer.appendChild(seeMoreBtn);
+        updateBtn();
+    }
+    seeMoreBtn.onclick = () => {
+        seeMoreContainer.remove();
+        renderBatch();
+        updateBtn();
+    };
     if (count) count.textContent = `${data.count} result${data.count !== 1 ? 's' : ''} for “${data.query || ''}”`;
     if (badge) badge.style.display = data.from_cache ? 'inline-flex' : 'none';
-
     _setPOIUIState('results');
 }
+
 
 /**
  * plotPOIMarkers — adds a distinct Google Maps marker for each POI.

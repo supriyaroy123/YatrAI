@@ -19,9 +19,3 @@ aiosqlite>=0.19.0
 # Firebase Admin SDK (Firestore POI cache)
 firebase-admin>=6.2.0
 
-# POI Search: Local embeddings + vector search
---extra-index-url https://download.pytorch.org/whl/cpu
-torch>=2.0.0
-sentence-transformers>=2.2.0   # all-MiniLM-L6-v2, runs on CPU, ~90 MB
-faiss-cpu>=1.7.4               # in-process vector index, no GPU needed
-

@@ -230,9 +230,9 @@ def load_accident_model() -> tuple:
     Raises:
         FileNotFoundError: If any required file is missing.
     """
-    model = joblib.load(ACCIDENT_MODEL_PATH, mmap_mode='r')
-    scaler = joblib.load(ACCIDENT_SCALER_PATH, mmap_mode='r')
-    le = joblib.load(ACCIDENT_ENCODER_PATH, mmap_mode='r')
+    model = joblib.load(ACCIDENT_MODEL_PATH)
+    scaler = joblib.load(ACCIDENT_SCALER_PATH)
+    le = joblib.load(ACCIDENT_ENCODER_PATH)
     return model, scaler, le
 
 

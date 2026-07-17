@@ -43,22 +43,25 @@ _memory_cache: dict = {}
 
 # ── Cache Key ─────────────────────────────────────────────────────────────────
 
-def make_cache_key(route_coords: list[list[float]], tags: list[str]) -> str:
+def make_cache_key(route_coords: list, query: str) -> str:
     """
-    Produces a stable SHA-256 hex key from route coordinates + OSM tags.
-
-    Args:
-        route_coords: List of [lon, lat] pairs from the GeoJSON geometry
-        tags:         Sorted list of OSM tag strings (e.g. ["amenity=fuel"])
-
-    Returns:
-        64-character hex string
+    Creates a unique hash for a route + query combination.
+    Samples the route heavily to avoid minor GPS jitter causing cache misses.
     """
-    # Stringify each coordinate pair rounded to 4 dp (≈11m precision)
-    coord_str = "|".join(f"{round(c[1], 4)},{round(c[0], 4)}" for c in route_coords)
-    tag_str   = ",".join(sorted(tags))
-    raw       = f"{coord_str}||{tag_str}"
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    if not route_coords:
+        return "empty_route"
+
+    sampled = route_coords[::20]
+    if len(sampled) < 2:
+        sampled = [route_coords[0], route_coords[-1]]
+
+    coord_str = "_".join(f"{c[0]:.2f},{c[1]:.2f}" for c in sampled)
+    
+    # Clean and normalize the query
+    q = str(query).lower().strip()
+    
+    raw = f"{coord_str}_{q}"
+    return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -83,25 +86,21 @@ def get_cached_pois(cache_key: str) -> Optional[dict]:
     return _memory_get(cache_key)
 
 
-def set_cached_pois(cache_key: str, pois: list[dict], embeddings) -> None:
+def set_cached_pois(cache_key: str, pois: list[dict]) -> None:
     """
-    Stores POI results and their pre-computed embeddings in the cache.
+    Stores POI results in the cache.
 
     Args:
         cache_key:   Key from make_cache_key()
         pois:        Deduplicated list of POI dicts
-        embeddings:  numpy array of shape (N, embedding_dim) — pre-computed
     """
     expires_at = datetime.now(tz=timezone.utc) + timedelta(hours=POI_CACHE_TTL_HOURS)
-
-    # Serialise the numpy array so it can be stored in Firestore as a blob
-    embeddings_blob = base64.b64encode(pickle.dumps(embeddings)).decode("utf-8")
 
     doc = {
         "key":        cache_key,
         "pois":       pois,
-        "embeddings": embeddings_blob,
-        "expires_at": expires_at.isoformat(),
+        "expires_at": expires_at,
+        "created_at": datetime.now(tz=timezone.utc),
     }
 
     # Write to Firestore (best-effort)

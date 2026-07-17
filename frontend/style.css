@@ -76,7 +76,7 @@ body {
     min-height: 100vh;
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start; /* Fix for mobile: align top instead of center */
     position: relative;
     overflow-x: hidden;
 }

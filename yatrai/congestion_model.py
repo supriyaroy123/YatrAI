@@ -191,10 +191,10 @@ def load_congestion_model() -> tuple:
     Raises:
         FileNotFoundError: If any required file is missing.
     """
-    model = joblib.load(CONGESTION_MODEL_PATH, mmap_mode='r')
-    scaler = joblib.load(CONGESTION_SCALER_PATH, mmap_mode='r')
-    le = joblib.load(CONGESTION_ENCODER_PATH, mmap_mode='r')
-    medians = joblib.load(TRAINING_MEDIANS_PATH, mmap_mode='r')
+    model = joblib.load(CONGESTION_MODEL_PATH)
+    scaler = joblib.load(CONGESTION_SCALER_PATH)
+    le = joblib.load(CONGESTION_ENCODER_PATH)
+    medians = joblib.load(TRAINING_MEDIANS_PATH)
     return model, scaler, le, medians
 
 
