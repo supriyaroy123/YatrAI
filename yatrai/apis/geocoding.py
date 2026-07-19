@@ -113,32 +113,32 @@ def geocode(place_name: str) -> Optional[dict]:
     if hardcoded:
         return hardcoded
 
-    # Attempt OpenCage first if key is available
-    if GEOCODING_API_KEY:
+    # Use Google Maps Geocoding API as primary fallback if key is available
+    google_maps_key = os.environ.get("GOOGLE_MAPS_API_KEY")
+    if google_maps_key:
         params = {
-            "key": GEOCODING_API_KEY,
-            "q": place_name,
-            "limit": 1,
-            "countrycode": "IN",
+            "address": place_name,
+            "key": google_maps_key
         }
-        headers = {"User-Agent": NOMINATIM_USER_AGENT}
         try:
             resp = requests.get(
-                OPENCAGE_URL, params=params, headers=headers, timeout=API_TIMEOUT
+                "https://maps.googleapis.com/maps/api/geocode/json",
+                params=params, timeout=API_TIMEOUT
             )
             resp.raise_for_status()
             data = resp.json()
 
-            if data.get("results"):
+            if data.get("status") == "OK" and data.get("results"):
                 result = data["results"][0]
                 return {
-                    "lat": float(result["geometry"]["lat"]),
-                    "lon": float(result["geometry"]["lng"]),
-                    "display_name": result["formatted"],
+                    "lat": float(result["geometry"]["location"]["lat"]),
+                    "lon": float(result["geometry"]["location"]["lng"]),
+                    "display_name": result["formatted_address"],
                 }
         except Exception as e:
-            print(f"[OpenCage] Error geocoding '{place_name}': {e}. Falling back to Nominatim...")
+            logger.error(f"[Google Geocoding] Error geocoding '{place_name}': {e}")
 
+    # Fallback to Nominatim if Google Maps fails or key is missing
     # Enforce Nominatim's 1-request-per-second rate limit
     elapsed = time.time() - _last_request_time
     if elapsed < NOMINATIM_DELAY:
@@ -156,6 +156,7 @@ def geocode(place_name: str) -> Optional[dict]:
         resp = requests.get(
             NOMINATIM_URL, params=params, headers=headers, timeout=API_TIMEOUT
         )
+        global _last_request_time
         _last_request_time = time.time()
         resp.raise_for_status()
         data = resp.json()
@@ -169,7 +170,7 @@ def geocode(place_name: str) -> Optional[dict]:
             "display_name": data[0]["display_name"],
         }
     except Exception as e:
-        print(f"[Nominatim] Error geocoding '{place_name}': {e}")
+        logger.error(f"[Nominatim] Error geocoding '{place_name}': {e}")
         return None
 
 def geocode_poi_anchor(anchor_text: str) -> Optional[dict]:

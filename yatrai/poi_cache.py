@@ -118,7 +118,7 @@ def set_cached_pois(cache_key: str, pois: list[dict]) -> None:
     logger.info("[POICache] Cached %d POIs to memory (key=...%s)", len(pois), cache_key[-8:])
 
 
-# ── Firestore helpers ─────────────────────────────────────────────────────────
+# Firestore helpers 
 
 def _get_db():
     """Lazy import of the Firestore client to avoid circular imports."""
@@ -164,7 +164,7 @@ def _firestore_set(db, cache_key: str, doc: dict) -> None:
     db.collection(POI_CACHE_COLLECTION).document(cache_key).set(doc)
 
 
-# ── In-memory cache helpers ───────────────────────────────────────────────────
+# ── In-memory cache helpers 
 
 def _memory_get(cache_key: str) -> Optional[dict]:
     """Reads from the in-memory fallback cache."""
