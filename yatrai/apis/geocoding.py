@@ -156,7 +156,6 @@ def geocode(place_name: str) -> Optional[dict]:
         resp = requests.get(
             NOMINATIM_URL, params=params, headers=headers, timeout=API_TIMEOUT
         )
-        global _last_request_time
         _last_request_time = time.time()
         resp.raise_for_status()
         data = resp.json()
