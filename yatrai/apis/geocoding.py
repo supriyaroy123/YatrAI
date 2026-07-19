@@ -4,6 +4,7 @@ Converts place names to geographic coordinates with built-in rate limiting.
 """
 
 import re
+import os
 import logging
 import requests
 import time
