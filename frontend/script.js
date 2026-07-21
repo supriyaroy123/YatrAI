@@ -1243,6 +1243,12 @@ function initPOISearch() {
         });
     });
 
+    // Wire up the send button (green arrow) — JS listener as primary handler
+    const sendBtn = document.getElementById('poi-send-btn');
+    if (sendBtn) {
+        sendBtn.addEventListener('click', () => handlePOIQuery());
+    }
+
     // Submit on Enter key inside the text input
     const input = document.getElementById('poi-query-input');
     if (input) {
@@ -1363,6 +1369,11 @@ function _animatePOIStages() {
     const s2 = document.getElementById('poi-stage-2');
     const s3 = document.getElementById('poi-stage-3');
     if (!s1) return;
+
+    // Cancel any pending timers from a previous search
+    if (window._poiStageTimers) {
+        window._poiStageTimers.forEach(t => clearTimeout(t));
+    }
 
     [s1, s2, s3].forEach(s => s.classList.add('dim'));
     s1.classList.remove('dim');

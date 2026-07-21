@@ -122,13 +122,8 @@ async def startup_event():
 
 
 def _warm_embedding_model():
-    """Pre-load MiniLM in a background thread so the first POI search feels instant."""
-    try:
-        from yatrai.poi_search import get_embedding_model
-        get_embedding_model()
-        print("[OK] POI embedding model pre-loaded")
-    except Exception as e:
-        print(f"[!] Embedding model pre-load failed (will load on first search): {e}")
+    """No-op: embedding model was removed from the POI pipeline (now uses Overpass directly)."""
+    print("[OK] POI pipeline ready (Overpass + Gemini, no local embedding model needed)")
 
 
 

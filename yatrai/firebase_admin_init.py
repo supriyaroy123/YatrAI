@@ -40,7 +40,7 @@ def _initialize_firebase() -> bool:
         import firebase_admin
         from firebase_admin import credentials, firestore
 
-        # ── Already initialized by a previous call ──────────────────
+        # ── Already initialized by a previous call 
         if firebase_admin._apps:
             _firebase_app = firebase_admin.get_app()
             _firestore_client = firestore.client()
@@ -48,7 +48,7 @@ def _initialize_firebase() -> bool:
 
         cred = None
 
-        # ── Path 1: local serviceAccountKey.json ─────────────────────
+        # ── Path 1: local serviceAccountKey.json
         local_key_path = Path(__file__).resolve().parent.parent / "serviceAccountKey.json"
         if local_key_path.exists():
             cred = credentials.Certificate(str(local_key_path))

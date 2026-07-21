@@ -5,7 +5,7 @@ Caches Overpass API results per route+category in Firestore so that
 repeat searches on the same route are near-instant (300 ms target).
 
 Cache key design:
-    sha256( sorted(route_point_strings) + "||" + normalized_tag_string )
+    md5( sampled_route_points + "||" + normalized_query )
 
 This key is stable across re-runs and is category-scoped, so a user
 searching "petrol" and then "hotel" on the same route gets two separate
@@ -13,9 +13,8 @@ cache documents with their own TTLs.
 
 Cache document schema (Firestore):
     {
-        "key":        "<sha256 hex>",
+        "key":        "<md5 hex>",
         "pois":       [ {osm_id, name, lat, lon, type, tags, ...}, ... ],
-        "embeddings": "<base64-encoded pickled numpy array>",
         "created_at": <Firestore server timestamp>,
         "expires_at": <datetime>,
     }
@@ -28,8 +27,6 @@ Fallback:
 
 import hashlib
 import logging
-import pickle
-import base64
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -37,7 +34,7 @@ from yatrai.config import POI_CACHE_TTL_HOURS, POI_CACHE_COLLECTION
 
 logger = logging.getLogger(__name__)
 
-# In-memory fallback cache: key -> {"pois": [...], "embeddings": bytes, "expires_at": datetime}
+# In-memory fallback cache: key -> {"pois": [...], "expires_at": datetime}
 _memory_cache: dict = {}
 
 
@@ -46,7 +43,7 @@ _memory_cache: dict = {}
 def make_cache_key(route_coords: list, query: str) -> str:
     """
     Creates a unique hash for a route + query combination.
-    Samples the route heavily to avoid minor GPS jitter causing cache misses.
+    Samples the route to avoid minor GPS jitter causing cache misses.
     """
     if not route_coords:
         return "empty_route"
@@ -56,10 +53,10 @@ def make_cache_key(route_coords: list, query: str) -> str:
         sampled = [route_coords[0], route_coords[-1]]
 
     coord_str = "_".join(f"{c[0]:.2f},{c[1]:.2f}" for c in sampled)
-    
+
     # Clean and normalize the query
     q = str(query).lower().strip()
-    
+
     raw = f"{coord_str}_{q}"
     return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
@@ -71,7 +68,7 @@ def get_cached_pois(cache_key: str) -> Optional[dict]:
     Retrieves a cached POI set by key.
 
     Returns:
-        dict with {"pois": [...], "embeddings": ndarray} on cache hit
+        dict with {"pois": [...]} on cache hit
         None on miss or if the entry has expired
     """
     # Try Firestore first
@@ -86,7 +83,7 @@ def get_cached_pois(cache_key: str) -> Optional[dict]:
     return _memory_get(cache_key)
 
 
-def set_cached_pois(cache_key: str, pois: list[dict]) -> None:
+def set_cached_pois(cache_key: str, pois: list) -> None:
     """
     Stores POI results in the cache.
 
@@ -99,8 +96,8 @@ def set_cached_pois(cache_key: str, pois: list[dict]) -> None:
     doc = {
         "key":        cache_key,
         "pois":       pois,
-        "expires_at": expires_at,
-        "created_at": datetime.now(tz=timezone.utc),
+        "expires_at": expires_at.isoformat(),
+        "created_at": datetime.now(tz=timezone.utc).isoformat(),
     }
 
     # Write to Firestore (best-effort)
@@ -118,7 +115,7 @@ def set_cached_pois(cache_key: str, pois: list[dict]) -> None:
     logger.info("[POICache] Cached %d POIs to memory (key=...%s)", len(pois), cache_key[-8:])
 
 
-# Firestore helpers 
+# ── Firestore helpers ─────────────────────────────────────────────────────────
 
 def _get_db():
     """Lazy import of the Firestore client to avoid circular imports."""
@@ -126,8 +123,38 @@ def _get_db():
     return get_firestore_client()
 
 
+def _parse_expiry(expires_val) -> Optional[datetime]:
+    """
+    Safely parse an expiry value that may be:
+    - A Firestore DatetimeWithNanoseconds object (already a datetime)
+    - An ISO string (written by set_cached_pois)
+    - None / empty
+    Returns a timezone-aware datetime, or None on failure.
+    """
+    if expires_val is None:
+        return None
+
+    # If it's already a datetime (Firestore native timestamp), use it directly
+    if isinstance(expires_val, datetime):
+        if expires_val.tzinfo is None:
+            return expires_val.replace(tzinfo=timezone.utc)
+        return expires_val
+
+    # If it's a string, try ISO parse
+    if isinstance(expires_val, str) and expires_val:
+        try:
+            dt = datetime.fromisoformat(expires_val)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except Exception:
+            pass
+
+    return None
+
+
 def _firestore_get(db, cache_key: str) -> Optional[dict]:
-    """Reads one document from Firestore and deserialises it."""
+    """Reads one document from Firestore and returns the POIs if valid."""
     doc_ref = db.collection(POI_CACHE_COLLECTION).document(cache_key)
     doc = doc_ref.get()
 
@@ -136,27 +163,20 @@ def _firestore_get(db, cache_key: str) -> Optional[dict]:
 
     data = doc.to_dict()
 
-    # Check TTL
-    expires_str = data.get("expires_at", "")
-    if expires_str:
-        try:
-            expires_at = datetime.fromisoformat(expires_str)
-            if expires_at.tzinfo is None:
-                expires_at = expires_at.replace(tzinfo=timezone.utc)
-            if datetime.now(tz=timezone.utc) > expires_at:
-                logger.debug("[POICache] Firestore entry expired (key=...%s)", cache_key[-8:])
-                doc_ref.delete()   # clean up expired doc
-                return None
-        except Exception:
-            pass  # if we can't parse the date, treat as valid
+    # Check TTL — handle both Firestore Timestamp and ISO string
+    expires_at = _parse_expiry(data.get("expires_at"))
+    if expires_at is not None:
+        if datetime.now(tz=timezone.utc) > expires_at:
+            logger.debug("[POICache] Firestore entry expired (key=...%s)", cache_key[-8:])
+            doc_ref.delete()   # clean up expired doc
+            return None
 
-    # Deserialise embeddings
-    embeddings = _decode_embeddings(data.get("embeddings", ""))
-    if embeddings is None:
-        return None  # corrupt entry
+    pois = data.get("pois", [])
+    if not pois:
+        return None
 
-    logger.info("[POICache] Firestore HIT — %d POIs (key=...%s)", len(data["pois"]), cache_key[-8:])
-    return {"pois": data["pois"], "embeddings": embeddings}
+    logger.info("[POICache] Firestore HIT — %d POIs (key=...%s)", len(pois), cache_key[-8:])
+    return {"pois": pois}
 
 
 def _firestore_set(db, cache_key: str, doc: dict) -> None:
@@ -164,7 +184,7 @@ def _firestore_set(db, cache_key: str, doc: dict) -> None:
     db.collection(POI_CACHE_COLLECTION).document(cache_key).set(doc)
 
 
-# ── In-memory cache helpers 
+# ── In-memory cache helpers ───────────────────────────────────────────────────
 
 def _memory_get(cache_key: str) -> Optional[dict]:
     """Reads from the in-memory fallback cache."""
@@ -173,23 +193,18 @@ def _memory_get(cache_key: str) -> Optional[dict]:
         return None
 
     # TTL check
-    expires_str = entry.get("expires_at", "")
-    try:
-        expires_at = datetime.fromisoformat(expires_str)
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
+    expires_at = _parse_expiry(entry.get("expires_at"))
+    if expires_at is not None:
         if datetime.now(tz=timezone.utc) > expires_at:
             _memory_cache.pop(cache_key, None)
             return None
-    except Exception:
-        pass
 
-    embeddings = _decode_embeddings(entry.get("embeddings", ""))
-    if embeddings is None:
+    pois = entry.get("pois", [])
+    if not pois:
         return None
 
-    logger.info("[POICache] Memory HIT — %d POIs (key=...%s)", len(entry["pois"]), cache_key[-8:])
-    return {"pois": entry["pois"], "embeddings": embeddings}
+    logger.info("[POICache] Memory HIT — %d POIs (key=...%s)", len(pois), cache_key[-8:])
+    return {"pois": pois}
 
 
 def _memory_set(cache_key: str, doc: dict) -> None:
@@ -200,29 +215,8 @@ def _memory_set(cache_key: str, doc: dict) -> None:
         now = datetime.now(tz=timezone.utc)
         stale = []
         for k, v in _memory_cache.items():
-            try:
-                exp = datetime.fromisoformat(v.get("expires_at", ""))
-                if exp.tzinfo is None:
-                    exp = exp.replace(tzinfo=timezone.utc)
-                if now > exp:
-                    stale.append(k)
-            except Exception:
-                pass
+            expires_at = _parse_expiry(v.get("expires_at"))
+            if expires_at is not None and now > expires_at:
+                stale.append(k)
         for k in stale:
             _memory_cache.pop(k, None)
-
-
-# ── Serialisation helpers ─────────────────────────────────────────────────────
-
-def _decode_embeddings(blob: str):
-    """
-    Deserialises a base64+pickle encoded numpy array.
-    Returns None on any decoding error.
-    """
-    if not blob:
-        return None
-    try:
-        return pickle.loads(base64.b64decode(blob.encode("utf-8")))
-    except Exception as e:
-        logger.error("[POICache] Failed to decode embeddings: %s", e)
-        return None

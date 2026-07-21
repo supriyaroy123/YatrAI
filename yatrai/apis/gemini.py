@@ -1,9 +1,10 @@
 """
-Gemini API travel assistant summary generator.
+Gemini API — Travel summary generator + Dynamic POI intent extractor.
 """
 import requests
 import json
 import os
+
 
 def generate_travel_summary(
     origin: str,
@@ -28,14 +29,13 @@ def generate_travel_summary(
     fuel cost insight, and sustainability insight using the Gemini API.
     """
     api_key = os.environ.get("GEMINI_API_KEY", "")
-    
+
     model = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
     if model.startswith("models/"):
         model = model.replace("models/", "")
-    
-    # Correcting domain mapping to standard Google API endpoint
+
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-    
+
     fuel_info = ""
     tree_info = ""
     if fuel_needed_liters is not None and fuel_cost_rupees is not None:
@@ -100,7 +100,7 @@ IMPORTANT: Do not return any markdown tags or backticks (like ```json). Return O
         "travel_recommendation": "Plan ahead and allocate extra travel time.",
         "safety_recommendation": "Drive defensively, follow traffic rules, and wear your seatbelt/helmet.",
         "weather_alert": "Watch out for local weather conditions." if rain_mm > 0 or visibility_km < 5 else "",
-        "fuel_insight": f"Heavy traffic may increase fuel consumption. Consider driving during off-peak hours to save fuel." if traffic_level in ("Heavy", "Gridlock") else "Traffic impact on fuel consumption is minimal.",
+        "fuel_insight": "Heavy traffic may increase fuel consumption. Consider driving during off-peak hours to save fuel." if traffic_level in ("Heavy", "Gridlock") else "Traffic impact on fuel consumption is minimal.",
         "sustainability_insight": f"This journey is estimated to generate approximately {co2_emissions_kg:.1f} kg of CO₂ emissions. Consider carpooling or selecting alternative transit to reduce emissions." if co2_emissions_kg is not None else "Eco-friendly driving behaviors can help lower trip carbon emissions."
     }
 
@@ -108,20 +108,19 @@ IMPORTANT: Do not return any markdown tags or backticks (like ```json). Return O
         resp = requests.post(url, headers=headers, json=payload, timeout=3)
         resp.raise_for_status()
         result = resp.json()
-        
+
         # Extract text content
         text_content = result["candidates"][0]["content"]["parts"][0]["text"].strip()
-        
+
         # Clean up any potential markdown code blocks
         if text_content.startswith("```"):
-            # strip markdown lines
             lines = text_content.splitlines()
             if lines[0].startswith("```"):
                 lines = lines[1:]
             if lines[-1].startswith("```"):
                 lines = lines[:-1]
             text_content = "\n".join(lines).strip()
-            
+
         data = json.loads(text_content)
         # Ensure all required keys exist
         for key in ["summary", "travel_recommendation", "safety_recommendation", "weather_alert", "fuel_insight", "sustainability_insight"]:
@@ -135,20 +134,26 @@ IMPORTANT: Do not return any markdown tags or backticks (like ```json). Return O
 
 def extract_poi_intent(query: str) -> dict:
     """
-    Use Gemini to extract the search intent from a raw user query.
+    Use Gemini to extract ALL possible OpenStreetMap tags AND name-search
+    synonyms for any user query — enabling Google Maps-style discovery.
+
     Returns:
         {
-            "category": "restaurant", # or other Google Maps place type
-            "location_hint": "sector 15",
-            "filters": ["vegetarian", "cheap"],
-            "hindi_detected": True
+            "osm_tags":      ["shop=clothes", "shop=fabric", "shop=textiles"],
+            "name_keywords": ["cloth", "textile", "fabric", "garment", "fashion"],
+            "filters":       [],
+            "hindi_detected": False
         }
+
+    name_keywords is a list of synonym words used as an OR-regex in Overpass
+    name~ searches, so 'Fashion World', 'Textile Palace', 'Kapda Store' all match.
     """
+    q = query.strip()
     fallback_intent = {
-        "category": query.strip(),
-        "location_hint": None,
-        "filters": [],
-        "hindi_detected": False
+        "osm_tags":      [],
+        "name_keywords": [q.lower()],   # at least the raw query as fallback
+        "filters":       [],
+        "hindi_detected": False,
     }
 
     api_key = os.environ.get("GEMINI_API_KEY", "")
@@ -161,42 +166,160 @@ def extract_poi_intent(query: str) -> dict:
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
 
-    prompt = f"""
-You are an intent extractor for a route navigation app powered by OpenStreetMap (Overpass API). 
-Extract the search intent from the user query and return ONLY a JSON object with these fields: 
-- category (The most relevant OpenStreetMap key=value tag. Examples: amenity=cafe, amenity=restaurant, amenity=fuel, amenity=hospital, amenity=pharmacy, tourism=hotel, amenity=atm, amenity=parking. Guess the best matching standard OSM tag).
-- location_hint (specific place name if mentioned, else null)
-- filters (array of any constraints like vegetarian/cheap/24hour/emergency)
-- hindi_detected (true/false)
+    prompt = f"""You are an OpenStreetMap (OSM) expert and language understander for a route-navigation app in India.
+The user searched for: "{q}"
 
-User query: "{query}"
+Your tasks:
+1. Understand the USER'S INTENT even if phrased unusually, in Hindi/Hinglish, or abbreviated.
+2. Return ALL OpenStreetMap key=value tags that could match what the user wants.
+3. Return NAME SYNONYMS — words that would appear in the NAME of such a place,
+   so we can do a fallback text search when tags return nothing.
 
-Return ONLY raw JSON, no explanation, no markdown blocks.
-"""
+OSM tag namespaces:
+- amenity=*  (cafe, restaurant, fast_food, hospital, clinic, pharmacy, fuel, atm, bank, parking, police, toilets, doctors, place_of_worship, etc.)
+- shop=*     (clothes, fabric, textiles, garments, beauty, hairdresser, supermarket, grocery, bakery, electronics, mobile_phone, jewelry, optician, hardware, books, shoes, sports, toys, etc.)
+- leisure=*  (spa, fitness_centre, swimming_pool, park, playground, stadium, sports_centre, garden, etc.)
+- tourism=*  (hotel, motel, resort, guest_house, hostel, museum, viewpoint, zoo, attraction, etc.)
+- healthcare=* (clinic, doctor, dentist, pharmacy, hospital, etc.)
+- craft=*    (hairdresser, beautician, massage, bakery, tailor, etc.)
+- historic=* (monument, fort, temple, etc.)
+- highway=*  (bus_stop, rest_area, etc.)
+- natural=*  (beach, hot_spring, etc.)
+- sport=*    (swimming, yoga, fitness, cricket, etc.)
+
+Reference examples (user query -> osm_tags, name_keywords):
+- "spa"              -> tags:["leisure=spa","shop=beauty","craft=massage"],   names:["spa","wellness","massage","relax"]
+- "salon / saloon"   -> tags:["shop=beauty","shop=hairdresser","craft=hairdresser"], names:["salon","saloon","beauty","parlour","hair"]
+- "cloth shop"       -> tags:["shop=clothes","shop=fabric","shop=textiles","craft=tailor"], names:["cloth","textile","garment","fabric","fashion","kapda","saree","dress"]
+- "gym"              -> tags:["leisure=fitness_centre","leisure=sports_centre"], names:["gym","fitness","workout","crossfit","muscle"]
+- "hotel"            -> tags:["tourism=hotel","tourism=guest_house","tourism=hostel"], names:["hotel","inn","lodge","suites","stay"]
+- "petrol pump"      -> tags:["amenity=fuel"],  names:["petrol","fuel","pump","filling","hp","bharat","indian oil","iocl"]
+- "restaurant"       -> tags:["amenity=restaurant","amenity=fast_food"], names:["restaurant","dhaba","hotel","food","kitchen","bhojnalaya"]
+- "bakery"           -> tags:["shop=bakery","craft=bakery"], names:["bakery","baker","bread","cake","confection","pastry"]
+- "doctor"           -> tags:["amenity=doctors","amenity=clinic","healthcare=doctor"], names:["clinic","doctor","dr","medical","dispensary"]
+- "sweet shop"       -> tags:["shop=confectionery","shop=pastry"], names:["sweet","mithai","halwai","confection","candy"]
+- "mechanic"         -> tags:["shop=car_repair","craft=car_repair"], names:["mechanic","garage","repair","workshop","service"]
+- "dhaba"            -> tags:["amenity=restaurant","amenity=fast_food"], names:["dhaba","bhojnalaya","punjabi","food"]
+- "kapda dukan"      -> tags:["shop=clothes","shop=fabric","shop=textiles"], names:["kapda","cloth","textile","garment","fashion"]
+- "kirana store"     -> tags:["shop=convenience","shop=supermarket","shop=grocery"], names:["kirana","general","grocery","store","mart"]
+- "juice shop"       -> tags:["amenity=juice_bar","amenity=cafe"], names:["juice","fresh","fruit","shake","smoothie"]
+- "mobile shop"      -> tags:["shop=mobile_phone","shop=electronics"], names:["mobile","phone","samsung","apple","vivo","oppo"]
+- "tire shop"        -> tags:["shop=tyres","craft=car_repair"], names:["tyre","tire","wheel","puncture","rubber"]
+- "toll"             -> tags:["barrier=toll_booth"], names:["toll","plaza","booth"]
+- "temple"           -> tags:["amenity=place_of_worship","historic=temple"], names:["temple","mandir","devi","shiv","hanuman","mata"]
+
+Return ONLY this JSON object:
+{{
+  "osm_tags":      ["key=val", ...],     // all relevant OSM key=value tags, most likely first, max 6
+  "name_keywords": ["word1", "word2"],   // 3-7 lowercase words that appear in names of such places
+  "filters":       [],                   // any user constraints like "vegetarian","24hour","cheap" — empty if none
+  "hindi_detected": false               // true if query has Hindi/Hinglish words
+}}
+
+Return ONLY raw JSON. No markdown. No explanation."""
+
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
-            "temperature": 0.1,
+            "temperature": 0.0,
             "responseMimeType": "application/json"
         }
     }
-    
+
     try:
-        response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=5.0)
+        response = requests.post(
+            url,
+            headers={"Content-Type": "application/json"},
+            json=payload,
+            timeout=6.0
+        )
         if response.status_code != 200:
+            print(f"[Gemini Intent] API returned {response.status_code}, using name search fallback.")
             return fallback_intent
-        
+
         data = response.json()
-        text_content = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "{}")
-        
-        # Parse JSON and enforce schema
+        text_content = (
+            data.get("candidates", [{}])[0]
+                .get("content", {})
+                .get("parts", [{}])[0]
+                .get("text", "{}")
+        )
+
         intent = json.loads(text_content)
+
+        # Validate osm_tags — must be "key=value" strings
+        raw_tags = intent.get("osm_tags", [])
+        osm_tags = [
+            t.strip().lower() for t in raw_tags
+            if isinstance(t, str) and "=" in t.strip()
+        ]
+
+        # Validate name_keywords — list of short lowercase words
+        raw_kws = intent.get("name_keywords", [])
+        name_keywords = [
+            str(k).strip().lower() for k in raw_kws
+            if isinstance(k, str) and k.strip()
+        ]
+        # Always include the raw query word(s) as a safety fallback
+        for word in q.lower().split():
+            if word not in name_keywords:
+                name_keywords.append(word)
+        name_keywords = name_keywords[:8]  # cap at 8 keywords
+
+        print(f"[Gemini Intent] '{q}' → osm_tags={osm_tags}, name_keywords={name_keywords}")
+
         return {
-            "category": intent.get("category") or query.strip(),
-            "location_hint": intent.get("location_hint"),
-            "filters": intent.get("filters", []),
-            "hindi_detected": intent.get("hindi_detected", False)
+            "osm_tags":      osm_tags,
+            "name_keywords": name_keywords,
+            "filters":       intent.get("filters", []),
+            "hindi_detected": bool(intent.get("hindi_detected", False)),
         }
+
     except Exception as e:
-        print(f"[Gemini Intent Extractor] Error: {e}, falling back to keyword matching.")
+        print(f"[Gemini Intent] Error: {e} — falling back to name search for '{q}'.")
         return fallback_intent
+
+def generate_poi_fallback_answer(query: str, origin: str, dest: str, distance: float) -> str:
+    """
+    Generates a conversational travel assistant answer when no POI map results are found.
+    Uses Gemini to provide helpful context about the user's query along their specific route.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not api_key:
+        return "Sorry, I couldn't find exact map locations for this, and AI assistance is currently unavailable."
+
+    model = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+    if model.startswith("models/"):
+        model = model.replace("models/", "")
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+
+    prompt = f"""You are YatrAI, an expert Indian travel assistant. 
+The user is traveling from {origin} to {dest} (approx {distance} km).
+They searched the map for: "{query}"
+
+However, our OpenStreetMap database didn't find any exact locations matching this on their route (likely due to sparse rural map data in India).
+
+Your task: Provide a short, helpful, conversational response (2-4 sentences max).
+- If it's a generic thing (like "cloth shop", "dhaba", "mechanic"): Reassure them that they will definitely find these in the towns/villages along this route even if not on the map, and give a quick tip (e.g. "Look for local markets when passing through highway towns").
+- If it's something specific or rare: Tell them they might need to detour into a major city, or suggest an alternative.
+- Keep it friendly, empathetic, and strictly formatted in simple Markdown.
+
+Do NOT say "I am an AI" or apologize excessively. Just give the helpful advice."""
+
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.4,
+        }
+    }
+
+    try:
+        response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=8.0)
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+        return "I couldn't find any map results, but you'll likely find local options as you drive through populated areas."
+    except Exception as e:
+        print(f"[Gemini POI Fallback] Error: {e}")
+        return "I couldn't find any map results, but keep an eye out for local options along the highway."
