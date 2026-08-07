@@ -16,6 +16,7 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 from typing import Optional
 
@@ -40,9 +41,43 @@ from yatrai.poi_cache import make_cache_key, get_cached_pois, set_cached_pois
 from yatrai.firebase_admin_init import get_firestore_client  # initialise on startup
 
 
+import time as _time_module
+
 # Simple in-memory prediction cache: key -> (result_dict, timestamp)
 _predict_cache: dict = {}
 _CACHE_TTL_SECONDS = 300  # 5 minutes
+
+# ── Weather / AQI time-based cache ───────────────────────────────────────────
+# Weather changes every ~15 min; AQI every ~1 hour.
+# Caching avoids redundant HTTP calls for the same destination.
+_weather_cache: dict = {}   # (lat2, lon2) -> (data, monotonic_ts)
+_aqi_cache: dict    = {}    # (lat2, lon2) -> (data, monotonic_ts)
+_WEATHER_TTL = 900          # 15 minutes
+_AQI_TTL     = 3600         # 1 hour
+
+
+def _get_weather_cached(lat: float, lon: float):
+    key = (round(lat, 2), round(lon, 2))
+    entry = _weather_cache.get(key)
+    if entry:
+        data, ts = entry
+        if _time_module.monotonic() - ts < _WEATHER_TTL:
+            return data
+    result = get_weather(lat, lon)
+    _weather_cache[key] = (result, _time_module.monotonic())
+    return result
+
+
+def _get_aqi_cached(lat: float, lon: float, display_name: str):
+    key = (round(lat, 2), round(lon, 2))
+    entry = _aqi_cache.get(key)
+    if entry:
+        data, ts = entry
+        if _time_module.monotonic() - ts < _AQI_TTL:
+            return data
+    result = get_aqi(lat, lon, display_name)
+    _aqi_cache[key] = (result, _time_module.monotonic())
+    return result
 
 
 # App Setup 
@@ -58,6 +93,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Compress all JSON responses >500 bytes (saves 60-80% on typical payloads)
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 #  Global Model State 
 congestion_model = None
@@ -324,9 +361,10 @@ async def predict(request: PredictRequest, background_tasks: BackgroundTasks):
     dest_coords = (dest_geo["lat"], dest_geo["lon"])
     
     # Step 2-4: Get route, weather, and AQI concurrently in separate threads
-    route_task = loop.run_in_executor(None, get_route, origin_coords, dest_coords)
-    weather_task = loop.run_in_executor(None, get_weather, dest_coords[0], dest_coords[1])
-    aqi_task = loop.run_in_executor(None, get_aqi, dest_coords[0], dest_coords[1], dest_geo["display_name"])
+    # Weather and AQI use a time-based cache to avoid redundant API calls
+    route_task   = loop.run_in_executor(None, get_route, origin_coords, dest_coords)
+    weather_task = loop.run_in_executor(None, _get_weather_cached, dest_coords[0], dest_coords[1])
+    aqi_task     = loop.run_in_executor(None, _get_aqi_cached, dest_coords[0], dest_coords[1], dest_geo["display_name"])
     
     route_data, weather_data, aqi_data = await asyncio.gather(route_task, weather_task, aqi_task)
 
@@ -701,9 +739,28 @@ async def poi_search(request: POISearchRequest):
 
 
 
-#  Serve Frontend Static Files 
+#  Serve Frontend Static Files (with Cache-Control headers)
+# JS / CSS / images / fonts → cached 1 hour in browser (repeat visits = instant load)
+# HTML files → never cached so users always get the latest version
+
+_CACHEABLE_EXTS = {".js", ".css", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".ico",
+                   ".woff", ".woff2", ".ttf", ".otf", ".svg"}
+
 if FRONTEND_DIR.exists():
-    app.mount("/frontend", StaticFiles(directory=str(FRONTEND_DIR)), name="frontend")
+    @app.get("/frontend/{filename:path}")
+    async def serve_frontend_file(filename: str):
+        from fastapi.responses import FileResponse as _FR
+        from fastapi import Response as _R
+        file_path = FRONTEND_DIR / filename
+        if not file_path.exists() or not file_path.is_file():
+            raise HTTPException(status_code=404, detail=f"File not found: {filename}")
+        ext = file_path.suffix.lower()
+        headers = {}
+        if ext in _CACHEABLE_EXTS:
+            headers["Cache-Control"] = "public, max-age=3600"   # 1 hour
+        else:
+            headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return _FR(str(file_path), headers=headers)
 
 
 #  Run

@@ -249,11 +249,27 @@ def get_aqi_category(aqi_value: int) -> tuple:
     return "Hazardous", "#7e0023"
 
 
-# ─── Overpass API (OpenStreetMap POI search) ───────────────────────
+# ─── Overpass API (OpenStreetMap POI search — legacy, kept for reference) ──
 # Primary and fallback public Overpass instances (both are free, no key)
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 OVERPASS_FALLBACK_URL = "https://overpass.karte.io/api/interpreter"
 OVERPASS_TIMEOUT = 15   # seconds per individual Overpass request
+
+# ─── Google Places API (New) — primary POI search provider ──────────────────
+# Requires a Google Cloud project with the Places API (New) enabled.
+GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
+GOOGLE_PLACES_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
+# Fields we fetch to minimise billed SKUs (use X-Goog-FieldMask header)
+GOOGLE_PLACES_FIELD_MASK = (
+    "places.displayName,"
+    "places.formattedAddress,"
+    "places.location,"
+    "places.regularOpeningHours,"
+    "places.nationalPhoneNumber,"
+    "places.primaryType"
+)
+# Maximum results to request from Google Places per call (API max = 20)
+GOOGLE_PLACES_MAX_RESULTS = 20
 
 # ─── POI Search Pipeline Constants ────────────────────────────────
 # Distance between sampled points along the route polyline
@@ -265,7 +281,7 @@ POI_DEFAULT_RADIUS_KM = 2.0
 # Maximum number of POI results to return after FAISS ranking
 POI_MAX_RESULTS = 15
 
-# Firestore TTL: cached Overpass results expire after this many hours
+# Firestore TTL: cached Google Places results expire after this many hours
 POI_CACHE_TTL_HOURS = 24
 
 # Firestore collection name for route-level POI cache documents

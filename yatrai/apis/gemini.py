@@ -132,6 +132,12 @@ IMPORTANT: Do not return any markdown tags or backticks (like ```json). Return O
         return fallback_response
 
 
+# In-memory intent cache — Gemini's answer for a given query never changes,
+# so we can safely cache indefinitely. Capped at 200 entries.
+_intent_cache: dict = {}
+_INTENT_CACHE_MAX = 200
+
+
 def extract_poi_intent(query: str) -> dict:
     """
     Use Gemini to extract ALL possible OpenStreetMap tags AND name-search
@@ -149,6 +155,13 @@ def extract_poi_intent(query: str) -> dict:
     name~ searches, so 'Fashion World', 'Textile Palace', 'Kapda Store' all match.
     """
     q = query.strip()
+
+    # ── Cache hit: return instantly without calling Gemini ───────────────────
+    cache_key = q.lower()
+    if cache_key in _intent_cache:
+        print(f"[Gemini Intent] Cache hit for '{q}' — skipping API call")
+        return _intent_cache[cache_key]
+
     fallback_intent = {
         "osm_tags":      [],
         "name_keywords": [q.lower()],   # at least the raw query as fallback
@@ -268,12 +281,19 @@ Return ONLY raw JSON. No markdown. No explanation."""
 
         print(f"[Gemini Intent] '{q}' → osm_tags={osm_tags}, name_keywords={name_keywords}")
 
-        return {
+        result = {
             "osm_tags":      osm_tags,
             "name_keywords": name_keywords,
             "filters":       intent.get("filters", []),
             "hindi_detected": bool(intent.get("hindi_detected", False)),
         }
+
+        # Store in cache (evict oldest if at capacity)
+        if len(_intent_cache) >= _INTENT_CACHE_MAX:
+            oldest_key = next(iter(_intent_cache))
+            del _intent_cache[oldest_key]
+        _intent_cache[cache_key] = result
+        return result
 
     except Exception as e:
         print(f"[Gemini Intent] Error: {e} — falling back to name search for '{q}'.")

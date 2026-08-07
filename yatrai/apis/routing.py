@@ -8,6 +8,11 @@ from yatrai.config import (
     OSRM_URL, API_TIMEOUT, ROUTING_API_KEY, OPENROUTESERVICE_URL
 )
 
+# Public OSRM server is slower than commercial APIs — give it more time.
+# API_TIMEOUT (6 s) is fine for fast APIs like weather/AQI but OSRM
+# on router.project-osrm.org can take 10-20 s under load.
+_OSRM_TIMEOUT = 25  # seconds
+
 
 def get_route(origin: tuple, destination: tuple) -> dict:
     """
@@ -78,7 +83,7 @@ def get_route(origin: tuple, destination: tuple) -> dict:
     }
 
     try:
-        resp = requests.get(url, params=params, timeout=API_TIMEOUT)
+        resp = requests.get(url, params=params, timeout=_OSRM_TIMEOUT)
         resp.raise_for_status()
         data = resp.json()
 
