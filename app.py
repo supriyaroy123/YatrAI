@@ -19,6 +19,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 from typing import Optional
+import asyncio
+import numpy as np
+import time as _time_module
 
 from yatrai.config import (
     FRONTEND_DIR, DB_PATH, CONGESTION_MODEL_PATH, ACCIDENT_MODEL_PATH,
@@ -41,7 +44,6 @@ from yatrai.poi_cache import make_cache_key, get_cached_pois, set_cached_pois
 from yatrai.firebase_admin_init import get_firestore_client  # initialise on startup
 
 
-import time as _time_module
 
 # Simple in-memory prediction cache: key -> (result_dict, timestamp)
 _predict_cache: dict = {}
@@ -312,8 +314,7 @@ async def predict(request: PredictRequest, background_tasks: BackgroundTasks):
     departure_time_str = f"{departure_hour:02d}:{departure_minute:02d}"
     errors = []
     
-    import asyncio
-    import time as _time
+
     loop = asyncio.get_running_loop()
 
     # In-memory cache lookup
@@ -326,7 +327,7 @@ async def predict(request: PredictRequest, background_tasks: BackgroundTasks):
     cached = _predict_cache.get(cache_key)
     if cached:
         result_dict, cached_at = cached
-        if _time.monotonic() - cached_at < _CACHE_TTL_SECONDS:
+        if _time_module.monotonic() - cached_at < _CACHE_TTL_SECONDS:
             return result_dict
 
     # Step 1: Geocode origin and destination
@@ -384,7 +385,6 @@ async def predict(request: PredictRequest, background_tasks: BackgroundTasks):
                 current_hour=departure_hour,
             )
             # Scale features
-            import numpy as np
             features_scaled = congestion_scaler.transform(features_df)
             
             # Predict
@@ -547,11 +547,10 @@ async def predict(request: PredictRequest, background_tasks: BackgroundTasks):
         response["warnings"] = errors
 
     # Cache the result
-    import time as _time2
-    _predict_cache[cache_key] = (response, _time2.monotonic())
+    _predict_cache[cache_key] = (response, _time_module.monotonic())
     # Evict stale cache entries occasionally (keep dict lean)
     if len(_predict_cache) > 200:
-        cutoff = _time2.monotonic() - _CACHE_TTL_SECONDS
+        cutoff = _time_module.monotonic() - _CACHE_TTL_SECONDS
         stale = [k for k, (_, ts) in _predict_cache.items() if ts < cutoff]
         for k in stale:
             _predict_cache.pop(k, None)

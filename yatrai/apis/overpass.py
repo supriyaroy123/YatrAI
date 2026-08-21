@@ -69,29 +69,53 @@ def _derive_type_label(tags: dict) -> str:
     return "Place"
 
 
+import concurrent.futures
+
+# Persistent, thread-safe background executor
+_executor = concurrent.futures.ThreadPoolExecutor(max_workers=12)
+
+
+def _query_single_endpoint(url: str, query: str, timeout: float) -> list:
+    """Query a single Overpass endpoint, returns elements or raises an exception."""
+    resp = requests.post(
+        url,
+        data={"data": query},
+        headers=_HEADERS,
+        timeout=timeout
+    )
+    if resp.status_code == 200:
+        return resp.json().get("elements", [])
+    elif resp.status_code == 429:
+        raise Exception("Rate-limited (HTTP 429)")
+    else:
+        raise Exception(f"HTTP status {resp.status_code}")
+
+
 def _run_query(query: str) -> list:
-    """Execute an Overpass QL query against all known endpoints, return parsed elements."""
-    for url in _OVERPASS_ENDPOINTS:
+    """Execute an Overpass QL query against all known endpoints in parallel, returning the first success."""
+    timeout_seconds = 4.5
+    futures = {
+        _executor.submit(_query_single_endpoint, url, query, timeout_seconds): url
+        for url in _OVERPASS_ENDPOINTS
+    }
+    
+    first_success = None
+    for future in concurrent.futures.as_completed(futures):
+        url = futures[future]
         try:
-            resp = requests.post(
-                url,
-                data={"data": query},
-                headers=_HEADERS,
-                timeout=30.0
-            )
-            if resp.status_code == 200:
-                elements = resp.json().get("elements", [])
-                logger.info("[Overpass] %s → %d elements via %s", query[:60], len(elements), url)
-                return elements
-            elif resp.status_code == 429:
-                logger.warning("[Overpass] Rate-limited by %s, trying next endpoint.", url)
-            else:
-                logger.warning("[Overpass] %s returned HTTP %d.", url, resp.status_code)
-        except requests.exceptions.Timeout:
-            logger.warning("[Overpass] %s timed out.", url)
+            elements = future.result()
+            if first_success is None:
+                first_success = elements
+                clean_query = query.strip().replace("\n", " ")
+                logger.info("[Overpass] %s -> %d elements via %s (fastest success)", clean_query[:60], len(elements), url)
+                break
         except Exception as e:
-            logger.warning("[Overpass] %s error: %s", url, e)
-    logger.error("[Overpass] All endpoints failed.")
+            logger.warning("[Overpass] Endpoint %s failed: %s", url, e)
+            
+    if first_success is not None:
+        return first_success
+
+    logger.error("[Overpass] All parallel endpoints failed or timed out.")
     return []
 
 

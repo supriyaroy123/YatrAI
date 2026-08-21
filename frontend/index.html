@@ -2,6 +2,19 @@
 <html lang="en">
 
 <head>
+    <script>
+        (function() {
+            let savedTheme = localStorage.getItem('yatrai-theme');
+            let migrated = localStorage.getItem('theme-migrated-v2');
+            if (!migrated) {
+                savedTheme = 'light';
+                localStorage.setItem('yatrai-theme', 'light');
+                localStorage.setItem('theme-migrated-v2', 'true');
+            }
+            if (!savedTheme) savedTheme = 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YatrAI | Smart Traffic Intelligence for Indian Roads</title>
@@ -120,33 +133,33 @@
             -webkit-text-fill-color: var(--text-primary, #e8eaf6) !important;
             transition: background-color 5000s ease-in-out 0s;
         }
-        /* Ensure Google Places autocomplete dropdown renders on top of everything */
+        /* Ensure Google Places autocomplete dropdown renders on top of everything and matches the theme */
         .pac-container {
             z-index: 9999 !important;
-            background: #1a1f35 !important;
-            border: 1px solid rgba(255,255,255,0.08) !important;
+            background: var(--bg-card) !important;
+            border: 1px solid var(--border-glass) !important;
             border-radius: 12px !important;
-            box-shadow: 0 16px 40px rgba(0,0,0,0.5) !important;
+            box-shadow: var(--card-shadow) !important;
             font-family: 'Outfit', sans-serif !important;
             margin-top: 4px !important;
         }
         .pac-item {
             padding: 10px 14px !important;
-            color: #c8cde8 !important;
-            border-top: 1px solid rgba(255,255,255,0.05) !important;
+            color: var(--text-secondary) !important;
+            border-top: 1px solid var(--border-glass) !important;
             cursor: pointer !important;
             font-size: 0.85rem !important;
         }
         .pac-item:first-child { border-top: none !important; }
         .pac-item:hover, .pac-item-selected {
-            background: rgba(93,202,165,0.12) !important;
+            background: var(--bg-card-hover) !important;
         }
         .pac-item-query {
-            color: #e8eaf6 !important;
+            color: var(--text-primary) !important;
             font-weight: 600 !important;
             font-size: 0.85rem !important;
         }
-        .pac-matched { color: #5dcaa5 !important; }
+        .pac-matched { color: var(--accent-blue-hover) !important; }
         .pac-icon { display: none !important; }
         .pac-logo:after { display: none !important; }
     </style>
@@ -195,22 +208,22 @@
                 <div class="logo-section">
                     <svg width="220" height="32" viewBox="0 0 680 98" role="img" xmlns="http://www.w3.org/2000/svg" style="max-width: 100%; height: auto;">
                         <title>YatrAI</title>
-                        <rect x="5" y="5" width="74" height="88" rx="14" fill="#0f172a" stroke="#0891b2" stroke-width="0.6"/>
-                        <path d="M 16,15 Q 29,31 42,46" fill="none" stroke="#0891b2" stroke-width="4" stroke-linecap="round"/>
-                        <path d="M 68,15 Q 55,31 42,46" fill="none" stroke="#0891b2" stroke-width="4" stroke-linecap="round"/>
-                        <path d="M 42,46 L 42,73" fill="none" stroke="#04617b" stroke-width="4" stroke-linecap="round"/>
-                        <circle cx="29" cy="31" r="2.5" fill="#04617b"/>
-                        <circle cx="55" cy="31" r="2.5" fill="#04617b"/>
-                        <circle cx="42" cy="60" r="2.5" fill="#04617b"/>
-                        <circle cx="16" cy="15" r="5.5" fill="#0891b2"/>
-                        <circle cx="68" cy="15" r="5.5" fill="#0891b2"/>
-                        <circle cx="42" cy="46" r="16" fill="none" stroke="#0891b2" stroke-width="0.7" opacity="0.25"/>
-                        <circle cx="42" cy="46" r="10" fill="none" stroke="#0891b2" stroke-width="1" opacity="0.45"/>
-                        <circle cx="42" cy="46" r="6" fill="#0f172a" stroke="#0891b2" stroke-width="2"/>
-                        <circle cx="42" cy="46" r="2.5" fill="#0891b2"/>
-                        <circle cx="42" cy="73" r="4.5" fill="#04617b"/>
-                        <circle cx="42" cy="73" r="2" fill="#0891b2"/>
-                        <text x="92" y="58" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif" font-weight="800" font-size="46" fill="var(--text-primary)"><tspan>Yatr</tspan><tspan fill="#0891b2">AI</tspan></text>
+                        <rect x="5" y="5" width="74" height="88" rx="14" fill="#ffffff" stroke="#1a73e8" stroke-width="5"/>
+                        <path d="M 16,15 Q 29,31 42,46" fill="none" stroke="#1a73e8" stroke-width="4" stroke-linecap="round"/>
+                        <path d="M 68,15 Q 55,31 42,46" fill="none" stroke="#1a73e8" stroke-width="4" stroke-linecap="round"/>
+                        <path d="M 42,46 L 42,73" fill="none" stroke="#1557b0" stroke-width="4" stroke-linecap="round"/>
+                        <circle cx="29" cy="31" r="2.5" fill="#1557b0"/>
+                        <circle cx="55" cy="31" r="2.5" fill="#1557b0"/>
+                        <circle cx="42" cy="60" r="2.5" fill="#1557b0"/>
+                        <circle cx="16" cy="15" r="5.5" fill="#1a73e8"/>
+                        <circle cx="68" cy="15" r="5.5" fill="#1a73e8"/>
+                        <circle cx="42" cy="46" r="16" fill="none" stroke="#1a73e8" stroke-width="0.7" opacity="0.25"/>
+                        <circle cx="42" cy="46" r="10" fill="none" stroke="#1a73e8" stroke-width="1" opacity="0.45"/>
+                        <circle cx="42" cy="46" r="6" fill="#ffffff" stroke="#1a73e8" stroke-width="2"/>
+                        <circle cx="42" cy="46" r="2.5" fill="#1a73e8"/>
+                        <circle cx="42" cy="73" r="4.5" fill="#1557b0"/>
+                        <circle cx="42" cy="73" r="2" fill="#1a73e8"/>
+                        <text x="92" y="58" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif" font-weight="800" font-size="46" fill="var(--text-primary)"><tspan>Yatr</tspan><tspan fill="#1a73e8">AI</tspan></text>
                         <text x="93" y="78" font-family="'Segoe UI',Arial,sans-serif" font-weight="400" font-size="10" letter-spacing="3.2" fill="var(--text-secondary)">ROUTE INTELLIGENCE · INDIA</text>
                     </svg>
                 </div>
@@ -331,6 +344,11 @@
                             <input type="number" id="custom-mileage-input" placeholder="e.g. 22" min="1" max="150" step="0.1">
                         </div>
                     </div>
+                </div>
+
+                <!-- Travel Awareness Panel (Psychology-driven contextual nudges) -->
+                <div id="awareness-panel" class="awareness-panel">
+                    <!-- Populated dynamically by updateAwarenessPanel() -->
                 </div>
 
                 <button id="predict-btn" class="predict-btn" onclick="handlePredict()">
@@ -665,7 +683,7 @@
                         <div class="poi-loading-spinner"></div>
                         <div class="poi-loading-stages">
                             <span class="poi-stage" id="poi-stage-1">📍 Sampling route points…</span>
-                            <span class="poi-stage dim" id="poi-stage-2">🗺️ Querying OpenStreetMap…</span>
+                            <span class="poi-stage dim" id="poi-stage-2">🗺️ Querying Google Places…</span>
                             <span class="poi-stage dim" id="poi-stage-3">🤖 Ranking results…</span>
                         </div>
                     </div>
@@ -692,14 +710,14 @@
 
             </div>
 
-            
-            <!-- App Device Shell Footer -->
-            <footer id="app-footer">
-                <div class="footer-content">
-                    <p>© 2026 YatrAI · Intelligent Indian Route Intelligence</p>
-                </div>
-            </footer>
         </section>
+
+        <!-- App Device Shell Footer (outside results section so it's always visible) -->
+        <footer id="app-footer">
+            <div class="footer-content">
+                <p>© 2026 YatrAI · Intelligent Indian Route Intelligence</p>
+            </div>
+        </footer>
     </div>
 
     <script src="/frontend/script.js?v=1.13"></script>

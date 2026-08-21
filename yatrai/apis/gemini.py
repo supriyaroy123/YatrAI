@@ -244,7 +244,7 @@ Return ONLY raw JSON. No markdown. No explanation."""
             url,
             headers={"Content-Type": "application/json"},
             json=payload,
-            timeout=6.0
+            timeout=3.0  # Speed over completeness — local fast-path handles common queries
         )
         if response.status_code != 200:
             print(f"[Gemini Intent] API returned {response.status_code}, using name search fallback.")

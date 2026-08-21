@@ -1,7 +1,20 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 
 <head>
+    <script>
+        (function() {
+            let savedTheme = localStorage.getItem('yatrai-theme');
+            let migrated = localStorage.getItem('theme-migrated-v2');
+            if (!migrated) {
+                savedTheme = 'light';
+                localStorage.setItem('yatrai-theme', 'light');
+                localStorage.setItem('theme-migrated-v2', 'true');
+            }
+            if (!savedTheme) savedTheme = 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login to YatrAI | Smart Traffic Intelligence</title>
@@ -14,6 +27,13 @@
         rel="stylesheet">
     <link rel="stylesheet" href="/frontend/style.css?v=1.2">
     <style>
+        .app-container {
+            max-width: 440px !important;
+            border-radius: var(--radius-xl) !important;
+            border: 1px solid var(--border-glass) !important;
+            box-shadow: var(--card-shadow) !important;
+        }
+
         .auth-card {
             background: var(--bg-card);
             border: 1px solid var(--border-glass);
@@ -76,7 +96,7 @@
         .auth-tab-btn.active {
             background: var(--bg-card);
             color: var(--text-primary);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            box-shadow: var(--card-shadow);
         }
 
         .auth-form {
@@ -87,7 +107,7 @@
         }
 
         .auth-btn {
-            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            background: var(--accent-blue);
             border: none;
             border-radius: var(--radius-md);
             padding: 14px;
@@ -105,8 +125,7 @@
         }
 
         .auth-btn:hover {
-            background: linear-gradient(135deg, var(--accent-blue-hover), var(--accent-purple));
-            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.35);
+            background: var(--accent-blue-hover);
         }
 
         .auth-btn:disabled {
@@ -165,28 +184,12 @@
 
         /* Background Image Styles */
         .image-bg {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: -2;
-            background-image: url('/frontend/bg-image.png');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
+            display: none;
         }
 
         /* Animated Orbs Overlay */
         .orbs-bg {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: -1;
-            overflow: hidden;
-            pointer-events: none;
+            display: none;
         }
 
         .orb {

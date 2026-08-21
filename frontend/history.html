@@ -1,7 +1,20 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 
 <head>
+    <script>
+        (function() {
+            let savedTheme = localStorage.getItem('yatrai-theme');
+            let migrated = localStorage.getItem('theme-migrated-v2');
+            if (!migrated) {
+                savedTheme = 'light';
+                localStorage.setItem('yatrai-theme', 'light');
+                localStorage.setItem('theme-migrated-v2', 'true');
+            }
+            if (!savedTheme) savedTheme = 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YatrAI | Prediction History</title>
@@ -20,7 +33,7 @@
 
         .history-card {
             background: var(--bg-card);
-            border: none;
+            border: 1px solid var(--border-glass);
             border-radius: var(--radius-lg);
             padding: 16px;
             cursor: pointer;
@@ -30,14 +43,13 @@
             gap: 12px;
             position: relative;
             overflow: hidden;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            box-shadow: var(--card-shadow);
         }
 
         .history-card:hover {
             background: var(--bg-card-hover);
-            transform: translateY(-2px);
             border-color: var(--border-glass-hover);
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+            box-shadow: var(--card-shadow);
         }
 
         .history-card-header {
@@ -107,8 +119,7 @@
         .modal-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(7, 9, 19, 0.85);
-            backdrop-filter: blur(8px);
+            background: rgba(0, 0, 0, 0.4);
             z-index: 2000;
             display: flex;
             align-items: center;
@@ -127,7 +138,7 @@
             width: calc(100% - 32px);
             max-width: 440px;
             background: var(--bg-primary);
-            border: none;
+            border: 1px solid var(--border-glass);
             border-radius: var(--radius-xl);
             max-height: 85vh;
             display: flex;
@@ -135,7 +146,7 @@
             position: relative;
             transform: scale(0.95);
             transition: transform 0.3s ease;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+            box-shadow: var(--card-shadow);
         }
 
         .modal-overlay.open .modal-container {

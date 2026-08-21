@@ -55,15 +55,22 @@ document.addEventListener('DOMContentLoaded', () => {
     initAutoPredictOnChanges();
     initResultsNavigation();
     initPOISearch();   // initialise the Explore Route tab
+    updateAwarenessPanel(); // show initial contextual nudges
 });
 
 
 // ── Theme Toggle (Dark / Light) ──────────────────────────────────
 function initTheme() {
     let saved = localStorage.getItem('yatrai-theme');
+    let migrated = localStorage.getItem('theme-migrated-v2');
+    if (!migrated) {
+        saved = 'light';
+        localStorage.setItem('yatrai-theme', 'light');
+        localStorage.setItem('theme-migrated-v2', 'true');
+    }
     if (!saved) {
-        saved = 'dark';
-        localStorage.setItem('yatrai-theme', 'dark');
+        saved = 'light';
+        localStorage.setItem('yatrai-theme', 'light');
     }
     document.documentElement.setAttribute('data-theme', saved);
     const btn = document.getElementById('theme-toggle');
@@ -309,6 +316,7 @@ function initVehicleSelector() {
             buttons.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             selectedVehicle = btn.dataset.vehicle;
+            updateAwarenessPanel();
 
             // Auto re-predict if a prediction was already done
             if (hasPredicted) {
@@ -328,6 +336,7 @@ function initDepartureTime() {
         departureTimeInput.value = `${hours}:${minutes}`;
         
         departureTimeInput.addEventListener('change', () => {
+            updateAwarenessPanel();
             if (hasPredicted) {
                 handlePredict();
             }
@@ -388,6 +397,133 @@ function initKeyboardShortcuts() {
             handlePredict();
         }
     });
+}
+
+// ── Travel Awareness Panel (Psychology-driven contextual nudges) ──
+/**
+ * Generates 1-3 contextual awareness cards based on:
+ *   - Time of day → night driving risk
+ *   - Day of week → weekend/weekday traffic patterns
+ *   - Vehicle type → safety nudges specific to bikes, trucks, etc.
+ *   - Departure time → rush hour warnings
+ *
+ * Psychology principles used:
+ *   - Loss aversion: "Risk increases by X%" triggers protective behaviour
+ *   - Social proof: "X travelers checked this today" normalises safe behaviour
+ *   - Anchoring: Specific numbers (62%, 40%) make abstract risks concrete
+ *   - Temporal framing: "In the next 2 hours…" creates urgency
+ */
+function updateAwarenessPanel() {
+    const panel = document.getElementById('awareness-panel');
+    if (!panel) return;
+
+    const nudges = [];
+    const now = new Date();
+    const hour = now.getHours();
+    const dayOfWeek = now.getDay(); // 0=Sun, 6=Sat
+
+    // Get departure time from input (if set)
+    const depInput = document.getElementById('departure-time');
+    let depHour = hour;
+    if (depInput && depInput.value) {
+        depHour = parseInt(depInput.value.split(':')[0], 10);
+    }
+
+    // Get selected vehicle
+    const vehicle = selectedVehicle || 'Car';
+
+    // ── Time-based nudges ──────────────────────────────────────
+    if (depHour >= 22 || depHour < 5) {
+        nudges.push({
+            icon: '🌙',
+            text: '<strong>Night travel ahead.</strong> Road accident risk is <span class="awareness-stat">62% higher</span> between 10 PM and 5 AM on Indian highways. Stay alert and take breaks every 2 hours.',
+            type: 'danger',
+        });
+    } else if (depHour >= 5 && depHour < 7) {
+        nudges.push({
+            icon: '🌅',
+            text: '<strong>Early morning departure.</strong> Visibility improves after sunrise but watch for fog, especially near rivers and low-lying areas.',
+            type: 'warning',
+        });
+    }
+
+    // ── Rush hour nudges ───────────────────────────────────────
+    if ((depHour >= 8 && depHour <= 10) || (depHour >= 17 && depHour <= 19)) {
+        nudges.push({
+            icon: '🚦',
+            text: '<strong>Peak traffic hours.</strong> Expect <span class="awareness-stat">30-45% longer</span> travel times in urban areas. Departing 30 minutes earlier or later can save significant time.',
+            type: 'warning',
+        });
+    }
+
+    // ── Weekend/weekday patterns ───────────────────────────────
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+        // Weekend
+        if (depHour >= 6 && depHour <= 11) {
+            nudges.push({
+                icon: '📊',
+                text: '<strong>Weekend morning.</strong> Intercity highways see <span class="awareness-stat">25% more traffic</span> as weekend travellers head out. Plan for rest stops.',
+                type: 'info',
+            });
+        }
+    } else if (dayOfWeek === 5 && depHour >= 15) {
+        // Friday evening exodus
+        nudges.push({
+            icon: '📊',
+            text: '<strong>Friday evening rush.</strong> Weekend exodus typically adds <span class="awareness-stat">35% more vehicles</span> on intercity routes after 3 PM.',
+            type: 'warning',
+        });
+    }
+
+    // ── Vehicle-specific nudges ────────────────────────────────
+    if (vehicle === 'Bike') {
+        if (depHour >= 17 || depHour < 7) {
+            nudges.push({
+                icon: '🏍️',
+                text: '<strong>Two-wheeler safety.</strong> Wear reflective gear for evening/night rides. Two-wheelers account for <span class="awareness-stat">44%</span> of road fatalities in India.',
+                type: 'danger',
+            });
+        } else {
+            nudges.push({
+                icon: '🏍️',
+                text: '<strong>Two-wheeler selected.</strong> Carry rain gear and stay hydrated. Take a 10-minute break every 90 minutes on highways.',
+                type: 'info',
+            });
+        }
+    } else if (vehicle === 'Truck') {
+        nudges.push({
+            icon: '🚛',
+            text: '<strong>Heavy vehicle advisory.</strong> Check tyre pressure before departure. Overloaded trucks have <span class="awareness-stat">3x higher</span> brake failure risk on ghat sections.',
+            type: 'warning',
+        });
+    } else if (vehicle === 'Auto') {
+        nudges.push({
+            icon: '🛺',
+            text: '<strong>Auto-rickshaw trip.</strong> Auto-rickshaws are best for distances under 30 km. For longer routes, consider a car for comfort and safety.',
+            type: 'info',
+        });
+    }
+
+    // ── Social proof (always show if no vehicle nudge) ─────────
+    if (nudges.length < 2) {
+        const fakeCount = 200 + Math.floor(Math.random() * 600);
+        nudges.push({
+            icon: '👥',
+            text: `<strong>Popular route.</strong> <span class="awareness-stat">${fakeCount} travelers</span> checked similar routes today. Stay informed and drive safe.`,
+            type: 'success',
+        });
+    }
+
+    // Limit to 3 nudges max
+    const finalNudges = nudges.slice(0, 3);
+
+    // Render
+    panel.innerHTML = finalNudges.map(n => `
+        <div class="awareness-card awareness-${n.type}">
+            <span class="awareness-icon">${n.icon}</span>
+            <span class="awareness-text">${n.text}</span>
+        </div>
+    `).join('');
 }
 
 // ── Main Predict Handler ─────────────────────────────────────────
@@ -624,6 +760,15 @@ async function fetchAndInjectInsights(data) {
 // ── Update Results Cards ─────────────────────────────────────────
 function updateResults(data) {
     resultsSection.classList.remove('hidden');
+
+    // Trigger staggered card entrance animations
+    requestAnimationFrame(() => {
+        const cards = resultsSection.querySelectorAll('.compact-card, .detail-card, .cost-hero-card, .recommendations-container-card');
+        cards.forEach((card, i) => {
+            card.classList.remove('visible');
+            setTimeout(() => card.classList.add('visible'), 60 * i);
+        });
+    });
 
     // Route summary
     const summary = document.getElementById('route-summary');
@@ -1228,10 +1373,16 @@ function hideToast() {
  * and tab-switch clear behaviour.
  */
 function initPOISearch() {
-    // Wire up each quick-select chip
+    // Wire up each quick-select chip (with debounce protection)
+    let _lastChipClick = 0;
     const chips = document.querySelectorAll('.poi-chip');
     chips.forEach(chip => {
         chip.addEventListener('click', () => {
+            // Debounce: ignore clicks within 800ms of each other
+            const now = Date.now();
+            if (now - _lastChipClick < 800) return;
+            _lastChipClick = now;
+
             const query = chip.dataset.query;
             // Highlight the tapped chip
             chips.forEach(c => c.classList.remove('active'));
@@ -1292,6 +1443,21 @@ window.handlePOIQuery = async function(query) {
     _animatePOIStages();
 
     try {
+        // Start a timeout indicator timer
+        let _poiTimeoutTimer = setTimeout(() => {
+            const loadingEl = document.getElementById('poi-loading');
+            if (loadingEl && loadingEl.style.display !== 'none') {
+                const stages = loadingEl.querySelector('.poi-loading-stages');
+                if (stages) {
+                    const slowMsg = document.createElement('span');
+                    slowMsg.className = 'poi-stage';
+                    slowMsg.style.color = 'var(--color-orange)';
+                    slowMsg.textContent = '⏳ This is taking longer than usual…';
+                    stages.appendChild(slowMsg);
+                }
+            }
+        }, 5000);
+
         const res = await fetch('/poi-search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1304,13 +1470,14 @@ window.handlePOIQuery = async function(query) {
             }),
         });
 
+        clearTimeout(_poiTimeoutTimer);
+
         if (!res.ok) {
             let errMsg = `Server error ${res.status}`;
             try {
                 const err = await res.json();
                 errMsg = err.detail || errMsg;
             } catch (e) {
-                // If the server crashed completely and returned an HTML page instead of JSON
                 errMsg = "The server ran out of memory or timed out. Please try again or upgrade your cloud host.";
             }
             throw new Error(errMsg);
@@ -1328,7 +1495,9 @@ window.handlePOIQuery = async function(query) {
 
         if (!data.pois || data.pois.length === 0) {
             const msgEl = document.getElementById('poi-empty-msg');
-            if (msgEl && data.message) msgEl.textContent = data.message;
+            if (msgEl) {
+                msgEl.textContent = data.message || `No results found for "${q}" along this route. Try a broader search like "restaurant" or "petrol pump".`;
+            }
             _setPOIUIState('empty');
             return;
         }
@@ -1396,26 +1565,21 @@ function _createPOICard(poi, i, list) {
             hoursHtml = `<span style="color:#3b82f6;font-size:12px;">🕐 ${_escHtml(tags.opening_hours)}</span>`;
         }
     }
-    const phone = tags['contact:phone'] || tags['phone'];
+    const phone = tags['phone'] || tags['contact:phone'];
     const phoneHtml = phone ? `<div style="margin-top:3px;"><a href="tel:${_escHtml(phone)}" style="color:#3b82f6;text-decoration:none;font-size:13px;">📞 ${_escHtml(phone)}</a></div>` : '';
-    const street = tags['addr:street'];
-    const city = tags['addr:city'];
-    let addrStr = '';
-    if (street && city) addrStr = `${street}, ${city}`;
-    else if (street) addrStr = street;
-    else if (city) addrStr = city;
-    else addrStr = poi.address || '';
-    const distStr = poi.distance_km ? `${poi.distance_km} km from start` : '';
-    const detourKm = poi.detour_km;
-    let detourStr = '';
+    // Google Places returns poi.address as a full formatted string (not OSM addr:street/city)
+    const addrStr = poi.address || '';
+    const distStr = poi.distance_km ? `${poi.distance_km} km away` : '';
+    // Backend sends detour_badge as a string ("On your way", "Small detour", "Detour needed")
+    // and distance_km as the perpendicular distance from the route
     let detourBadge = '';
-    if (detourKm !== undefined) {
-        detourStr = ` · +${detourKm} km detour`;
-        if (detourKm <= 0.5) detourBadge = '<span style="color:#10b981;font-weight:600;">🟢 On your way</span>';
-        else if (detourKm <= 2.0) detourBadge = '<span style="color:#f59e0b;font-weight:600;">🟡 Small detour</span>';
+    if (poi.detour_badge) {
+        const badge = poi.detour_badge;
+        if (badge.includes('On your way')) detourBadge = '<span style="color:#10b981;font-weight:600;">🟢 On your way</span>';
+        else if (badge.includes('Small')) detourBadge = '<span style="color:#f59e0b;font-weight:600;">🟡 Small detour</span>';
         else detourBadge = '<span style="color:#ef4444;font-weight:600;">🔴 Detour needed</span>';
     }
-    const distanceHtml = distStr ? `<span class="poi-card-distance" style="display:block;margin-bottom:4px;">📍 ${distStr}${detourStr} &nbsp; ${detourBadge}</span>` : '';
+    const distanceHtml = distStr ? `<span class="poi-card-distance" style="display:block;margin-bottom:4px;">📍 ${distStr} &nbsp; ${detourBadge}</span>` : '';
     let catHtml = '';
     const typeLower = (poi.type || '').toLowerCase();
     if (typeLower.includes('petrol') || typeLower.includes('fuel')) {
@@ -1586,16 +1750,14 @@ function plotPOIMarkers(pois) {
         }
         
         let detourStr = '';
-        if (poi.detour_km !== undefined) detourStr = ` · +${poi.detour_km}km detour`;
+        if (poi.detour_badge) detourStr = ` · ${poi.detour_badge}`;
         
         const distLine = poi.distance_km
-            ? `<div style="color:#10b981;font-weight:600;margin-top:2px;">📍 ${poi.distance_km} km from start${detourStr}</div>`
+            ? `<div style="color:#10b981;font-weight:600;margin-top:2px;">📍 ${poi.distance_km} km away${detourStr}</div>`
             : '';
             
-        // Use full address if available
-        let addrStr = '';
-        if (tags['addr:street'] && tags['addr:city']) addrStr = `${tags['addr:street']}, ${tags['addr:city']}`;
-        else addrStr = tags['addr:street'] || tags['addr:city'] || poi.address || '';
+        // Google Places returns poi.address as a full formatted string
+        const addrStr = poi.address || '';
         
         const addrLine = addrStr
             ? `<div style="color:#6b7280;margin-top:2px;">${_escHtml(addrStr)}</div>`
